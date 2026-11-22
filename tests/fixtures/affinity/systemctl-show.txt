@@ -1,0 +1,15 @@
+Id=affinity-deepseek.service
+Conflicts=llama-server.service shutdown.target vllm-qwen.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+FragmentPath=/etc/systemd/system/affinity-deepseek.service
+DropInPaths=
+UnitFileState=enabled
+ActiveEnterTimestamp=Sat 2026-10-17 01:58:55 UTC
+ActiveEnterTimestampMonotonic=4149167575
+MainPID=18420
+NRestarts=0
+ExecStart={ path=/home/backupuser/affinity/run.sh ; argv[]=/home/backupuser/affinity/run.sh --placement-strategy static --dspark on --kv-size 262144 --kv-commit 262144 --host 0.0.0.0 --port 8095 ; ignore_errors=no ; start_time=[Sat 2026-10-17 01:58:55 UTC] ; stop_time=[n/a] ; pid=18420 ; code=(null) ; status=0/0 }
+ExecStop={ path=/usr/bin/docker ; argv[]=/usr/bin/docker stop -t 30 affinity-4 ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+Environment=HOME=/home/backupuser GPUS=4 NAME=affinity-4 AFF_ALLOW_NRANK=1

@@ -1,0 +1,10 @@
+{
+  "id": "construct",
+  "name": "Construct",
+  "description": "The Hive console's identity on the Nexus shell: Share Tech Mono and VT323, CRT scanlines, glyph rain, a prompt in the machine strip, [ bracket ] controls. Light mode is a green-ink printout.",
+  "author": "Nexus Dashboard",
+  "version": "1.0",
+  "modes": ["dark", "light"],
+  "css": "theme.css",
+  "js": "theme.js"
+}

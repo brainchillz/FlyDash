@@ -1,0 +1,175 @@
+/* NeXTSTEP — built from the mockup of the same name; see THEMES.md for the
+   contract. Every rule is scoped to html[data-theme="nextstep"]. */
+html[data-theme="nextstep"] {
+  color-scheme: dark;
+  --bg: #4a4a4a;
+  --sidebar-bg: #555555;
+  --card-bg: #585858;
+  --border: #2a2a2a;
+  --border-soft: #3c3c3c;
+  --text: #eeeeee;
+  --text-muted: #b8b8b8;
+  --primary: #ffffff;
+  --primary-hover: #dddddd;
+  --on-primary: #111111;
+  --green: #9ccc8a;
+  --yellow: #e6c66a;
+  --red: #e07a70;
+  --radius: 0;
+  --nav-active: #8a8a8a;
+  --card-hover: rgba(255,255,255,.05);
+  --row-hover: rgba(255,255,255,.06);
+  --overlay: rgba(0,0,0,.5);
+  --raw-bg: #333;
+  --sans: Helvetica,'Helvetica Neue',Arial,sans-serif;
+  --mono: 'Courier New',Courier,monospace;
+  --display: var(--sans);
+  --hi: #8a8a8a;
+  --sh: #111111;
+  --mid: #333333;
+  --title: #000;
+  --title-fg: #fff;
+  --field: #3a3a3a;
+  --desk: #1f1f1f;
+  --hover: rgba(255,255,255,.08);
+  --hover-soft: rgba(255,255,255,.06);
+  --well: rgba(0,0,0,.25);
+  --raw-fg: #e8e8e8;
+  --console-bg: #222222;
+  --knob: #dddddd;
+  --on-yellow: #111111;
+  --red-hover: #c9655c;
+  --yellow-hover: #cfae55;
+}
+html[data-theme="nextstep"].theme-light {
+  color-scheme: light;
+  --bg: #aaaaaa;
+  --sidebar-bg: #aaaaaa;
+  --card-bg: #b4b4b4;
+  --border: #555555;
+  --border-soft: #8c8c8c;
+  --text: #000000;
+  --text-muted: #333333;
+  --primary: #000000;
+  --primary-hover: #222222;
+  --on-primary: #ffffff;
+  --green: #2f7d2f;
+  --yellow: #8a6a00;
+  --red: #a52a1a;
+  --nav-active: #ffffff;
+  --card-hover: rgba(255,255,255,.25);
+  --row-hover: rgba(255,255,255,.35);
+  --overlay: rgba(0,0,0,.35);
+  --raw-bg: #c8c8c8;
+  --hi: #ffffff;
+  --sh: #000000;
+  --mid: #555555;
+  --title: #000;
+  --title-fg: #fff;
+  --field: #ffffff;
+  --desk: #555555;
+  --hover: rgba(255,255,255,.3);
+  --hover-soft: rgba(255,255,255,.35);
+  --well: rgba(0,0,0,.08);
+  --raw-fg: #000000;
+  --console-bg: #222222;
+  --knob: #ffffff;
+  --on-yellow: #ffffff;
+  --red-hover: #8a2416;
+  --yellow-hover: #705600;
+}
+html[data-theme="nextstep"] body { font-family:var(--sans) }
+html[data-theme="nextstep"] .sidebar { border-right:0;margin:6px 0 6px 6px;box-shadow:inset 1px 1px 0 var(--sh),inset 2px 2px 0 var(--mid),inset -1px -1px 0 var(--hi) }
+html[data-theme="nextstep"] .sidebar-header { border-bottom:2px solid var(--sh);box-shadow:0 1px 0 var(--hi) }
+html[data-theme="nextstep"] .sidebar-header h1 { font-weight:700 }
+html[data-theme="nextstep"] .nav-cat { font-weight:700;color:var(--text);letter-spacing:.04em;font-size:10px }
+html[data-theme="nextstep"] .nav-list a { border-left:0;color:var(--text);padding:5px 12px }
+html[data-theme="nextstep"] .nav-list a:not(.active):hover { background:rgba(255,255,255,.08) }
+html[data-theme="nextstep"] .nav-list a.active { color:#000;background:var(--nav-active);box-shadow:inset 1px 1px 0 var(--sh),inset -1px -1px 0 var(--hi) }
+html[data-theme="nextstep"]:not(.theme-light) .nav-list a.active { color:#fff }
+html[data-theme="nextstep"] .sidebar-footer { border-top:2px solid var(--sh);box-shadow:0 -1px 0 var(--hi) inset }
+html[data-theme="nextstep"] .main-col { margin:6px }
+html[data-theme="nextstep"] .machine-strip { background:var(--bg);border-bottom:0;box-shadow:inset 0 -1px 0 var(--sh),inset 0 -2px 0 var(--mid);font-family:var(--sans);font-size:11.5px;color:var(--text) }
+html[data-theme="nextstep"] .content h2 { font-weight:700;font-size:17px }
+html[data-theme="nextstep"] .content h3,
+html[data-theme="nextstep"] .modal-body h3 { color:var(--text);font-weight:700;letter-spacing:.04em }
+html[data-theme="nextstep"] .content h3::after,
+html[data-theme="nextstep"] .modal-body h3::after { border-top:1px solid var(--sh);box-shadow:0 1px 0 var(--hi) }
+html[data-theme="nextstep"] .cards { gap:8px;background:transparent;border:0;overflow:visible }
+html[data-theme="nextstep"] .cards>.card,
+html[data-theme="nextstep"] .card,
+html[data-theme="nextstep"] .pool-card,
+html[data-theme="nextstep"] .health-ok,
+html[data-theme="nextstep"] .upd-flag,
+html[data-theme="nextstep"] .alert,
+html[data-theme="nextstep"] .modal,
+html[data-theme="nextstep"] .login-box { border:0;border-radius:0;background:var(--card-bg);box-shadow:inset 1px 1px 0 var(--hi),inset -1px -1px 0 var(--sh),inset -2px -2px 0 var(--mid) }
+html[data-theme="nextstep"] .card-head { color:var(--text-muted);font-weight:700;letter-spacing:.06em }
+html[data-theme="nextstep"] .card-value { font-family:var(--sans);font-weight:700;font-size:22px }
+html[data-theme="nextstep"] .card-sub,
+html[data-theme="nextstep"] .card-unit,
+html[data-theme="nextstep"] .pool-stats,
+html[data-theme="nextstep"] .zfs-vdev,
+html[data-theme="nextstep"] .usage-pct,
+html[data-theme="nextstep"] .subtitle,
+html[data-theme="nextstep"] .status-badge { font-family:var(--sans) }
+html[data-theme="nextstep"] .status-badge { text-transform:none;font-size:12px }
+html[data-theme="nextstep"] .status-dot,
+html[data-theme="nextstep"] .status-badge::before { border-radius:0;box-shadow:inset 1px 1px 0 rgba(255,255,255,.6),inset -1px -1px 0 rgba(0,0,0,.6) }
+html[data-theme="nextstep"] .btn { border-radius:0;background:var(--bg);color:var(--text);border:0;box-shadow:inset 1px 1px 0 var(--hi),inset -1px -1px 0 var(--sh),inset -2px -2px 0 var(--mid);font-weight:400;padding:5px 14px }
+html[data-theme="nextstep"].theme-light .btn { background:#aaa;color:#000 }
+html[data-theme="nextstep"] .btn:hover { background:var(--card-hover) }
+html[data-theme="nextstep"].theme-light .btn:hover { background:#b8b8b8 }
+html[data-theme="nextstep"] .btn:active { box-shadow:inset 1px 1px 0 var(--sh),inset -1px -1px 0 var(--hi) }
+html[data-theme="nextstep"] .btn-danger { color:var(--red) }
+html[data-theme="nextstep"] .btn-warning { color:var(--yellow) }
+html[data-theme="nextstep"] .toolbar .btn:first-child::after,
+html[data-theme="nextstep"] .login-box .btn[type=submit]::after { content:' ⏎';opacity:.7 }
+html[data-theme="nextstep"] .btn-outline,
+html[data-theme="nextstep"] .table .btn { border:0;color:var(--text) }
+html[data-theme="nextstep"] .form-control { border:0;border-radius:0;background:var(--field);box-shadow:inset 1px 1px 0 var(--sh),inset 2px 2px 0 var(--mid),inset -1px -1px 0 var(--hi) }
+html[data-theme="nextstep"].theme-light .form-control { color:#000 }
+html[data-theme="nextstep"] .form-control:focus { outline:2px solid var(--text) }
+html[data-theme="nextstep"] .usage-bar { height:9px;border:0;background:var(--field);box-shadow:inset 1px 1px 0 var(--sh),inset -1px -1px 0 var(--hi) }
+html[data-theme="nextstep"] .usage-bar-fill.green { background:var(--text-muted) }
+html[data-theme="nextstep"] .table thead th { background:var(--bg);color:var(--text);text-transform:none;letter-spacing:0;font-size:12px;border-bottom:0;box-shadow:inset 1px 1px 0 var(--hi),inset -1px -1px 0 var(--sh) }
+html[data-theme="nextstep"] .table tbody td { border-bottom:1px solid var(--border-soft) }
+html[data-theme="nextstep"] .table tbody tr:hover td { background:var(--row-hover) }
+html[data-theme="nextstep"] .pool-name { font-family:var(--sans);font-weight:700 }
+html[data-theme="nextstep"] .spark-line { stroke:var(--text) }
+html[data-theme="nextstep"] .spark-area { fill:var(--text) }
+html[data-theme="nextstep"] .spark-end { fill:var(--text) }
+html[data-theme="nextstep"] .modal-header { border-bottom:0;background:var(--title);color:var(--title-fg) }
+html[data-theme="nextstep"] .modal-header h3 { color:var(--title-fg) }
+html[data-theme="nextstep"] .modal-close { color:var(--title-fg) }
+html[data-theme="nextstep"] .modal-overlay { background:var(--overlay) }
+html[data-theme="nextstep"] #login-screen { background:var(--desk) }
+html[data-theme="nextstep"] .login-box { padding:0;border-top:0 }
+html[data-theme="nextstep"] .login-box::before { content:'Login';display:flex;align-items:center;justify-content:center;height:22px;background:var(--title);color:var(--title-fg);font-weight:700;font-size:13px;margin:2px }
+html[data-theme="nextstep"] .login-box>*:not(:first-child) { margin-left:20px;margin-right:20px }
+html[data-theme="nextstep"] .login-box h1 { margin-top:16px }
+html[data-theme="nextstep"] .login-box .btn:last-child,
+html[data-theme="nextstep"] .login-box .sso-sep { margin-bottom:0 }
+html[data-theme="nextstep"] .login-box form,
+html[data-theme="nextstep"] .login-box { padding-bottom:20px }
+
+/* ── window chrome (theme.js inserts .next-titlebar / .next-dock) ── */
+html[data-theme="nextstep"] body { padding: 12px; background: var(--desk); flex-wrap: wrap; align-content: flex-start; }
+html[data-theme="nextstep"] .next-titlebar { flex-basis: 100%; order: -1; height: 22px; background: var(--title); color: var(--title-fg); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; position: relative; }
+html[data-theme="nextstep"] .next-tb { position: absolute; top: 3px; width: 15px; height: 15px; background: #aaa; box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #000, inset -2px -2px 0 #555; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #000; font-weight: 700; line-height: 1; }
+html[data-theme="nextstep"] .next-tb.min { left: 4px; } html[data-theme="nextstep"] .next-tb.min::before { content: ''; width: 7px; height: 7px; border: 1px solid #000; box-shadow: inset 1px 1px 0 #fff; }
+html[data-theme="nextstep"] .next-tb.close { right: 4px; } html[data-theme="nextstep"] .next-tb.close::before { content: '×'; }
+html[data-theme="nextstep"] .sidebar { height: calc(100vh - 46px); position: sticky; top: 34px; margin: 0; background: var(--bg); border-right: 0; box-shadow: inset 1px 1px 0 var(--sh), inset 2px 2px 0 var(--mid), inset -1px -1px 0 var(--hi); }
+html[data-theme="nextstep"] .nav-list { overflow-y: auto; min-height: 0; }
+html[data-theme="nextstep"] .main-col { height: calc(100vh - 46px); max-height: none; background: var(--bg); }
+html[data-theme="nextstep"] .next-dock { order: 1; width: 66px; flex-shrink: 0; height: calc(100vh - 46px); display: flex; flex-direction: column; gap: 2px; padding: 6px 0 6px 2px; overflow: hidden; background: var(--bg); }
+html[data-theme="nextstep"] .next-tile { width: 60px; height: 60px; background: var(--bg); box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--sh), inset -2px -2px 0 var(--mid); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 9px; font-weight: 700; color: var(--text); cursor: pointer; letter-spacing: .04em; border: 0; font-family: var(--sans); padding: 0; }
+html[data-theme="nextstep"].theme-light .next-tile { background: #aaa; }
+html[data-theme="nextstep"] .next-tile .ico { width: 22px; height: 22px; stroke-width: 1.6; }
+html[data-theme="nextstep"] .next-tile:active { box-shadow: inset 1px 1px 0 var(--sh), inset -1px -1px 0 var(--hi); }
+html[data-theme="nextstep"] .next-cube { width: 26px; height: 26px; background: linear-gradient(135deg,#f0f0f0 0 50%,#9a9a9a 50% 100%); box-shadow: inset 0 0 0 1px #000; transform: rotate(45deg) scale(.8); }
+html[data-theme="nextstep"] .nav-list a.active { background: var(--nav-active); }
+html[data-theme="nextstep"] .login-box { padding: 0 0 20px; }
+html[data-theme="nextstep"] .login-box > *:not(:first-child) { margin-left: 20px; margin-right: 20px; }
+@media (max-width: 720px) { html[data-theme="nextstep"] .next-dock { display: none; } }
+

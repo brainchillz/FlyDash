@@ -1,0 +1,37 @@
+# Secrets & runtime state — never commit
+auth.json
+audit.log
+modules.json
+notifications.json
+maintenance.json
+schedules.json
+replication.json
+replication_key*
+replication_known_hosts
+network_config.json
+llama_presets.json
+model_job.json
+history.db
+certs/
+token
+*.tmp.*
+/plugins/
+/themes/
+themes.json
+io_prev.json
+smart_state.json
+/dnsmasq/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor local state
+*.swp
+
+# Package build outputs
+dist/
+.server.pid
+

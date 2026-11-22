@@ -1,0 +1,26 @@
+[Unit]
+Description=affinity: DeepSeek-V4-Flash-0731 (2.875bpw) on all 4x R9700, port 8095
+# Needs all four cards, so it cannot run with vllm-qwen (GPUs 0,1). Conflicts= makes systemd stop
+# the other one when this starts. The engine refuses >2 cards without AFF_ALLOW_NRANK=1; it works
+# on 4 real cards (2026-10-15, see the affinity-deepseek install docs).
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+Conflicts=vllm-qwen.service llama-server.service
+
+[Service]
+Type=simple
+User=backupuser
+Group=backupuser
+WorkingDirectory=/home/backupuser/affinity
+Environment=HOME=/home/backupuser
+Environment=GPUS=4 NAME=affinity-4 AFF_ALLOW_NRANK=1
+# --placement-strategy static: the default heat mover aborts at 4 cards because the host pool is empty.
+ExecStart=/home/backupuser/affinity/run.sh --placement-strategy static --dspark on --kv-size 262144 --kv-commit 262144 --host 0.0.0.0 --port 8095
+ExecStop=/usr/bin/docker stop -t 30 affinity-4
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

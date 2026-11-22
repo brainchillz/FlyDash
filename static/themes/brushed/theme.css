@@ -1,0 +1,207 @@
+/* Brushed Metal — built from the mockup of the same name; see THEMES.md for the
+   contract. Every rule is scoped to html[data-theme="brushed"]. */
+html[data-theme="brushed"] {
+  color-scheme: dark;
+  --bg: #2a2a2a;
+  --sidebar-bg: #4a4a4a;
+  --card-bg: #333333;
+  --border: #1d1d1d;
+  --border-soft: #3f3f3f;
+  --text: #e9e9e9;
+  --text-muted: #a3a3a3;
+  --primary: #5a9bf0;
+  --primary-hover: #7db3f6;
+  --on-primary: #ffffff;
+  --green: #5fc352;
+  --yellow: #e9bb47;
+  --red: #e35a4c;
+  --radius: 5px;
+  --nav-active: linear-gradient(180deg,#6aa6f7 0%,#3b7fe3 50%,#2f6fd6 51%,#4a8ae6 100%);
+  --card-hover: rgba(90,155,240,.1);
+  --row-hover: rgba(90,155,240,.12);
+  --overlay: rgba(0,0,0,.55);
+  --raw-bg: #1f1f1f;
+  --sans: 'Lucida Grande','Lucida Sans Unicode','Lucida Sans',Geneva,Verdana,sans-serif;
+  --mono: Monaco,Menlo,Consolas,monospace;
+  --display: var(--sans);
+  --metal-a: #5a5a5a;
+  --metal-b: #3e3e3e;
+  --metal-line: rgba(0,0,0,.18);
+  --metal-hi: rgba(255,255,255,.14);
+  --emboss: 0 1px 0 rgba(0,0,0,.6);
+  --pin: #2e2e2e;
+  --zebra: #2f3338;
+  --inset: #242424;
+  --aqua-top: #9fcbff;
+  --aqua-mid: #5a9bf0;
+  --aqua-deep: #2f6fd6;
+  --aqua-edge: #1f4f9a;
+  --desk-a: #3d5f8f;
+  --desk-b: #1b2f52;
+  --desk-c: #0b1526;
+  --metal: repeating-linear-gradient(180deg,var(--metal-line) 0 1px,transparent 1px 2px,transparent 2px 3px), repeating-linear-gradient(180deg,transparent 0 4px,var(--metal-hi) 4px 5px,transparent 5px 9px), linear-gradient(180deg,var(--metal-a),var(--metal-b));
+  --hover: rgba(90,155,240,.14);
+  --hover-soft: rgba(90,155,240,.1);
+  --well: rgba(0,0,0,.25);
+  --raw-fg: #e6e6e6;
+  --console-bg: #1a1a1a;
+  --knob: #f4f4f4;
+  --on-yellow: #2a1d00;
+  --red-hover: #c94c3e;
+  --yellow-hover: #c99a2a;
+}
+html[data-theme="brushed"].theme-light {
+  color-scheme: light;
+  --bg: #ffffff;
+  --sidebar-bg: #cfcfcf;
+  --card-bg: #ffffff;
+  --border: #9c9c9c;
+  --border-soft: #d6d6d6;
+  --text: #1c1c1c;
+  --text-muted: #6a6a6a;
+  --primary: #2f6fd6;
+  --primary-hover: #1f5bbd;
+  --on-primary: #ffffff;
+  --green: #4fb344;
+  --yellow: #e6b33a;
+  --red: #dc4a3c;
+  --radius: 5px;
+  --nav-active: linear-gradient(180deg,#6aa6f7 0%,#3b7fe3 50%,#2f6fd6 51%,#4a8ae6 100%);
+  --card-hover: rgba(47,111,214,.06);
+  --row-hover: rgba(47,111,214,.08);
+  --overlay: rgba(0,0,0,.35);
+  --raw-bg: #f4f4f4;
+  --sans: 'Lucida Grande','Lucida Sans Unicode','Lucida Sans',Geneva,Verdana,sans-serif;
+  --mono: Monaco,Menlo,Consolas,monospace;
+  --display: var(--sans);
+  --metal-a: #d9d9d9;
+  --metal-b: #c3c3c3;
+  --metal-line: rgba(0,0,0,.06);
+  --metal-hi: rgba(255,255,255,.55);
+  --emboss: 0 1px 0 rgba(255,255,255,.75);
+  --pin: #f5f5f5;
+  --zebra: #eef3fb;
+  --inset: #ffffff;
+  --aqua-top: #c4e2ff;
+  --aqua-mid: #6fb0f5;
+  --aqua-deep: #3b8ae8;
+  --aqua-edge: #2a63b8;
+  --desk-a: #9fd0ff;
+  --desk-b: #2f6fd0;
+  --desk-c: #11397f;
+  --metal: repeating-linear-gradient(180deg,var(--metal-line) 0 1px,transparent 1px 2px,transparent 2px 3px), repeating-linear-gradient(180deg,transparent 0 4px,var(--metal-hi) 4px 5px,transparent 5px 9px), linear-gradient(180deg,var(--metal-a),var(--metal-b));
+  --hover: rgba(47,111,214,.1);
+  --hover-soft: rgba(47,111,214,.08);
+  --well: rgba(0,0,0,.05);
+  --raw-fg: #222222;
+  --console-bg: #1a1a1a;
+  --knob: #ffffff;
+  --on-yellow: #2a1d00;
+  --red-hover: #c23c2e;
+  --yellow-hover: #c99a2a;
+}
+html[data-theme="brushed"] .sidebar { border-right:1px solid rgba(0,0,0,.35);box-shadow:inset -1px 0 0 var(--metal-hi) }
+html[data-theme="brushed"] .sidebar-header { border-bottom:1px solid rgba(0,0,0,.25);box-shadow:0 1px 0 var(--metal-hi) }
+html[data-theme="brushed"] .sidebar-header h1,
+html[data-theme="brushed"] .subtitle,
+html[data-theme="brushed"] .nav-cat,
+html[data-theme="brushed"] .nav-list a,
+html[data-theme="brushed"] .sidebar-footer { text-shadow:var(--emboss) }
+html[data-theme="brushed"] .nav-list a { color:var(--text);border-left:0;margin:1px 6px;border-radius:4px;padding-left:10px }
+html[data-theme="brushed"] .nav-sub a { padding-left:18px }
+html[data-theme="brushed"] .nav-list a:not(.active):hover { background:rgba(0,0,0,.06) }
+html[data-theme="brushed"] .nav-list a.active { color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.35);border-left:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 1px 1px rgba(0,0,0,.25) }
+html[data-theme="brushed"] .nav-cat { color:var(--text-muted);font-weight:700 }
+html[data-theme="brushed"] .machine-strip { border-bottom:1px solid rgba(0,0,0,.3);box-shadow:0 1px 0 var(--metal-hi);color:var(--text);text-shadow:var(--emboss);font-family:var(--sans);font-size:11px }
+html[data-theme="brushed"] .machine-strip .ms-host { font-weight:700 }
+html[data-theme="brushed"] .sidebar-footer { border-top:1px solid rgba(0,0,0,.25) }
+html[data-theme="brushed"] .content { background:repeating-linear-gradient(180deg,var(--bg) 0 2px,var(--pin) 2px 4px) }
+html[data-theme="brushed"] .content h2 { font-size:16px;font-weight:700;text-shadow:var(--emboss) }
+html[data-theme="brushed"] .content h3,
+html[data-theme="brushed"] .modal-body h3 { color:var(--text-muted);font-weight:700;letter-spacing:.04em }
+html[data-theme="brushed"] .cards { gap:10px;background:transparent;border:0;overflow:visible }
+html[data-theme="brushed"] .cards>.card,
+html[data-theme="brushed"] .card,
+html[data-theme="brushed"] .pool-card { border:1px solid var(--border);border-radius:var(--radius);background:linear-gradient(180deg,var(--card-bg),color-mix(in srgb,var(--card-bg) 92%,#000));box-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 1px 2px rgba(0,0,0,.18) }
+html[data-theme="brushed"]:not(.theme-light) .cards>.card,
+html[data-theme="brushed"]:not(.theme-light) .card,
+html[data-theme="brushed"]:not(.theme-light) .pool-card { box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 1px 2px rgba(0,0,0,.5) }
+html[data-theme="brushed"] .card-head { color:var(--text-muted);font-weight:700;letter-spacing:.04em }
+html[data-theme="brushed"] .card-value { font-family:var(--sans);font-weight:700;font-size:21px }
+html[data-theme="brushed"] .health-ok,
+html[data-theme="brushed"] .upd-flag,
+html[data-theme="brushed"] .alert { border-radius:var(--radius);background:var(--card-bg);box-shadow:inset 0 1px 0 rgba(255,255,255,.6) }
+html[data-theme="brushed"] .btn { background:linear-gradient(180deg,var(--aqua-top) 0%,var(--aqua-mid) 45%,var(--aqua-deep) 50%,var(--aqua-mid) 100%);border:1px solid var(--aqua-edge);border-radius:12px;color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.3);box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 1px 1px rgba(0,0,0,.25);font-weight:600;padding:5px 14px }
+html[data-theme="brushed"] .btn:hover { background:linear-gradient(180deg,#d5ebff 0%,#86bdf8 45%,#4e97ee 50%,#86bdf8 100%) }
+html[data-theme="brushed"] .btn-outline,
+html[data-theme="brushed"] .table .btn,
+html[data-theme="brushed"] .btn.sso-btn { background:linear-gradient(180deg,#fff,#dcdcdc);border:1px solid #8a8a8a;color:#222;text-shadow:0 1px 0 #fff;border-radius:12px }
+html[data-theme="brushed"]:not(.theme-light) .btn-outline,
+html[data-theme="brushed"]:not(.theme-light) .table .btn,
+html[data-theme="brushed"]:not(.theme-light) .btn.sso-btn { background:linear-gradient(180deg,#6a6a6a,#444);border-color:#222;color:#eee;text-shadow:0 1px 0 rgba(0,0,0,.6) }
+html[data-theme="brushed"] .btn-outline:hover,
+html[data-theme="brushed"] .table .btn:hover { background:linear-gradient(180deg,#fff,#cfcfcf) }
+html[data-theme="brushed"] .btn-danger { background:linear-gradient(180deg,#ffb3ab,#e8584a 50%,#d6402f 51%,#e8584a);border-color:#9c2b20 }
+html[data-theme="brushed"] .btn-warning { background:linear-gradient(180deg,#ffe6a8,#ecbf4a 50%,#dba52a 51%,#ecbf4a);border-color:#9c7515;color:#3a2a00;text-shadow:0 1px 0 rgba(255,255,255,.5) }
+html[data-theme="brushed"] .table .btn-danger { color:var(--red) }
+html[data-theme="brushed"] .table .btn-warning { color:#8a6410 }
+html[data-theme="brushed"] .form-control { background:var(--inset);border:1px solid #9a9a9a;border-radius:3px;box-shadow:inset 0 1px 2px rgba(0,0,0,.2) }
+html[data-theme="brushed"] .form-control:focus { border-color:var(--primary);box-shadow:0 0 0 3px rgba(107,163,242,.55),inset 0 1px 2px rgba(0,0,0,.2) }
+html[data-theme="brushed"] .usage-bar { height:11px;border-radius:6px;border:1px solid #8c8c8c;background:var(--inset);box-shadow:inset 0 1px 2px rgba(0,0,0,.25);overflow:hidden }
+html[data-theme="brushed"] .usage-bar-fill { border-radius:5px;background-image:linear-gradient(180deg,rgba(255,255,255,.85) 0 40%,rgba(255,255,255,.15) 50%,rgba(255,255,255,0) 100%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12) }
+html[data-theme="brushed"] .usage-bar-fill.green { background-color:var(--primary) }
+html[data-theme="brushed"] .usage-bar-fill.yellow { background-color:var(--yellow) }
+html[data-theme="brushed"] .usage-bar-fill.red { background-color:var(--red) }
+html[data-theme="brushed"] .usage-pct { font-family:var(--sans) }
+html[data-theme="brushed"] .status-dot,
+html[data-theme="brushed"] .status-badge::before { border-radius:50%;width:9px;height:9px;border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 1px 1px rgba(255,255,255,.7);background-image:radial-gradient(circle at 50% 28%,rgba(255,255,255,.9) 0,rgba(255,255,255,.3) 30%,transparent 50%) }
+html[data-theme="brushed"] .status-badge { font-family:var(--sans);text-transform:none;font-size:12px }
+html[data-theme="brushed"] .status-badge.green::before { background-color:var(--green) }
+html[data-theme="brushed"] .status-badge.yellow::before { background-color:var(--yellow) }
+html[data-theme="brushed"] .status-badge.red::before { background-color:var(--red) }
+html[data-theme="brushed"] .status-badge.gray::before { background:linear-gradient(#ddd,#aaa) }
+html[data-theme="brushed"] .table thead th { background:linear-gradient(180deg,#fafafa,#dedede);border-bottom:1px solid #9a9a9a;border-right:1px solid #cfcfcf;color:#333;text-transform:none;letter-spacing:0;font-size:11.5px;text-shadow:0 1px 0 #fff }
+html[data-theme="brushed"]:not(.theme-light) .table thead th { background:linear-gradient(180deg,#555,#3a3a3a);border-color:#222;color:#eee;text-shadow:0 1px 0 rgba(0,0,0,.6) }
+html[data-theme="brushed"] .table tbody tr:nth-child(even) td { background:var(--zebra) }
+html[data-theme="brushed"] .table tbody td { border-bottom:0;font-size:12.5px }
+html[data-theme="brushed"] .table tbody tr:hover td { background:var(--row-hover) }
+html[data-theme="brushed"] .table td.num { font-family:var(--sans) }
+html[data-theme="brushed"] .pool-name { font-family:var(--sans);font-weight:700 }
+html[data-theme="brushed"] .pool-stats,
+html[data-theme="brushed"] .card-sub,
+html[data-theme="brushed"] .card-unit,
+html[data-theme="brushed"] .zfs-vdev,
+html[data-theme="brushed"] .subtitle,
+html[data-theme="brushed"] .usage-pct { font-family:var(--sans) }
+html[data-theme="brushed"] .spark-line { stroke:var(--primary) }
+html[data-theme="brushed"] .spark-area { fill:var(--primary) }
+html[data-theme="brushed"] .modal { border-radius:7px;border:1px solid rgba(0,0,0,.4);box-shadow:0 12px 40px rgba(0,0,0,.5) }
+html[data-theme="brushed"] .modal-header { border-bottom:1px solid rgba(0,0,0,.3);text-shadow:var(--emboss) }
+html[data-theme="brushed"] .modal-header h3 { color:var(--text) }
+html[data-theme="brushed"] .modal-body { background:repeating-linear-gradient(180deg,var(--bg) 0 2px,var(--pin) 2px 4px) }
+html[data-theme="brushed"] #login-screen { background:radial-gradient(ellipse at 28% 18%,var(--desk-a) 0,var(--desk-b) 45%,var(--desk-c) 100%) }
+html[data-theme="brushed"] .login-box { border:1px solid rgba(0,0,0,.5);border-radius:7px;box-shadow:0 14px 40px rgba(0,0,0,.5);padding:28px;position:relative }
+html[data-theme="brushed"] .login-box h1,
+html[data-theme="brushed"] .login-box .subtitle,
+html[data-theme="brushed"] .login-box label { text-shadow:var(--emboss) }
+html[data-theme="brushed"] .login-box::before { content:'';position:absolute;left:8px;top:6px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 50% 28%,rgba(255,255,255,.95),rgba(255,255,255,.3) 30%,transparent 50%),#ff5f57;border:1px solid rgba(0,0,0,.35);box-shadow:21px 0 0 -1px #febc2e,21px 0 0 0 rgba(0,0,0,.35),42px 0 0 -1px #28c840,42px 0 0 0 rgba(0,0,0,.35) }
+html[data-theme="brushed"] .login-box { padding-top:34px }
+html[data-theme="brushed"] .login-box .form-control { background:#fff;color:#111 }
+html[data-theme="brushed"] .sso-sep { text-shadow:var(--emboss) }
+
+/* ── window chrome (theme.js inserts .brushed-titlebar / .brushed-bottombar) ── */
+html[data-theme="brushed"] body { padding: 12px; background: #3a3a3a; flex-wrap: wrap; align-content: flex-start; }
+html[data-theme="brushed"] .brushed-titlebar { flex-basis: 100%; order: -1; height: 22px; display: flex; align-items: center; justify-content: center; position: relative; font-size: 13px; font-weight: 700; color: var(--text); text-shadow: var(--emboss); border-bottom: 1px solid rgba(0,0,0,.35); border-radius: 7px 7px 0 0; background: var(--metal); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+html[data-theme="brushed"] .brushed-gems { position: absolute; left: 8px; top: 4px; display: flex; gap: 7px; }
+html[data-theme="brushed"] .brushed-gem { width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(0,0,0,.35); box-shadow: inset 0 1px 1px rgba(255,255,255,.7), inset 0 -2px 3px rgba(0,0,0,.2); background: radial-gradient(circle at 50% 28%,rgba(255,255,255,.95) 0,rgba(255,255,255,.35) 25%,transparent 45%), var(--g); }
+html[data-theme="brushed"] .brushed-gem.r { --g: #ff5f57; } html[data-theme="brushed"] .brushed-gem.y { --g: #febc2e; } html[data-theme="brushed"] .brushed-gem.g { --g: #28c840; }
+html[data-theme="brushed"] .brushed-bottombar { flex-basis: 100%; order: 99; height: 18px; position: relative; font-size: 10px; color: var(--text-muted); display: flex; align-items: center; padding-left: 12px; text-shadow: var(--emboss); border-top: 1px solid rgba(0,0,0,.3); border-radius: 0 0 7px 7px; background: var(--metal); box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.45); }
+html[data-theme="brushed"] .brushed-grip { position: absolute; right: 2px; bottom: 2px; width: 14px; height: 14px; background: repeating-linear-gradient(135deg,transparent 0 2px,rgba(0,0,0,.35) 2px 3px,rgba(255,255,255,.5) 3px 4px); }
+html[data-theme="brushed"] .sidebar { height: calc(100vh - 64px); position: sticky; top: 34px; background: var(--metal); box-shadow: inset -1px 0 0 var(--metal-hi), -1px 0 0 rgba(0,0,0,.5); }
+html[data-theme="brushed"] .nav-list { overflow-y: auto; min-height: 0; }
+html[data-theme="brushed"] .main-col { height: calc(100vh - 64px); max-height: none; box-shadow: 1px 0 0 rgba(0,0,0,.5); }
+html[data-theme="brushed"] .machine-strip, html[data-theme="brushed"] .sidebar-footer, html[data-theme="brushed"] .modal-header, html[data-theme="brushed"] .login-box { background: var(--metal); }
+html[data-theme="brushed"] .nav-list a.active { background: var(--nav-active); }
+html[data-theme="brushed"] .login-box .form-control { background: #fff; color: #111; }
+html[data-theme="brushed"] .login-box { padding-top: 34px; }
+

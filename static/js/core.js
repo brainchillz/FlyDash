@@ -1,0 +1,1106 @@
+function onUnauthorized() { showLogin(); throw new Error('Session expired — please sign in'); }
+
+const API = {
+  async get(path) {
+    const r = await fetch(path);
+    if (r.status === 401) onUnauthorized();
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  async post(path, data) {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    if (r.status === 401) onUnauthorized();
+    const j = await r.json();
+    if (!r.ok && !j.success) throw new Error(j.error || JSON.stringify(j));
+    return j;
+  },
+  async put(path, data) {
+    const r = await fetch(path, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    if (r.status === 401) onUnauthorized();
+    const j = await r.json();
+    if (!r.ok && !j.success) throw new Error(j.error || JSON.stringify(j));
+    return j;
+  },
+  // Both LXD config edits (instance limits, managed-network settings) are
+  // PATCH routes. This method was missing until 3.4.3, so their Apply buttons
+  // threw "API.patch is not a function".
+  async patch(path, data) {
+    const r = await fetch(path, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    if (r.status === 401) onUnauthorized();
+    const j = await r.json();
+    if (!r.ok && !j.success) throw new Error(j.error || JSON.stringify(j));
+    return j;
+  },
+  async delete(path) {
+    const r = await fetch(path, { method: 'DELETE' });
+    if (r.status === 401) onUnauthorized();
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || j.stderr || 'Command failed');
+    return j;
+  }
+};
+
+// `page-content` is where every page renders. In the desktop shell
+// (static/js/desktop.js) that is the pane of whichever app window is being
+// rendered into, so the lookup is routed through a hook the shell installs;
+// with no shell it is the plain element, exactly as before.
+function $(id) {
+  if (id === 'page-content' && typeof _pageHost === 'function') {
+    const host = _pageHost();
+    if (host) return host;
+  }
+  return document.getElementById(id);
+}
+let currentPage = 'dashboard';   // survives nav re-renders (active-link restore)
+// A page that re-renders itself (poll timers, post-action refresh) asks "am I
+// still on screen?" through this, never by comparing currentPage: a desktop
+// shell shows several pages at once and answers per window (desktop.js
+// installs _pageActiveHook); without a shell it is the classic single-page test.
+function pageActive(id) {
+  if (typeof _pageActiveHook === 'function') return !!_pageActiveHook(id);
+  return currentPage === id;
+}
+function showPage(id) { currentPage = id; document.querySelectorAll('.nav-list a').forEach(a => a.classList.toggle('active', a.dataset.page === id)); themeEvent('navigate', { page: id }); renderPage(id); }
+function escapeHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+// Inline stroke icon from the symbol set in index.html (currentColor-inheriting).
+function icon(name, cls) { return `<svg class="ico ${cls || ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`; }
+// Escape a value for safe use as a single-quoted JS string inside a
+// double-quoted HTML attribute (e.g. onclick="fn('VALUE')").
+function jsArg(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
+    .replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// Multi-select rendered as a checkbox list — click any combination, no Ctrl/Shift
+// gymnastics (native <select multiple> range-selects across non-adjacent items).
+// items: [{value, label}]; read the chosen values back with checkedValues(id).
+function checkboxList(id, items, emptyMsg) {
+  if (!items || !items.length) {
+    return `<div class="checklist" id="${id}"><p class="help" style="margin:6px">${escapeHtml(emptyMsg || 'None available')}</p></div>`;
+  }
+  return `<div class="checklist" id="${id}">` + items.map(it =>
+    `<label class="checkitem"><input type="checkbox" value="${escapeHtml(String(it.value))}">${escapeHtml(String(it.label))}</label>`
+  ).join('') + '</div>';
+}
+function checkedValues(id) {
+  return Array.from(document.querySelectorAll('#' + id + ' input[type=checkbox]:checked')).map(c => c.value);
+}
+
+let isAuthed = false;
+let currentUser = '';
+let currentRole = 'admin';
+
+// Parse a ZFS/human size string ("1.18M", "928G", "0", "512K") to bytes.
+function parseSize(s) {
+  if (s == null) return 0;
+  s = String(s).trim();
+  if (s === '' || s === '-') return 0;
+  const m = s.match(/^([0-9.]+)\s*([KMGTPEZ]?)i?B?$/i);
+  if (!m) return parseFloat(s) || 0;
+  const u = { '': 1, K: 1024, M: 1024**2, G: 1024**3, T: 1024**4, P: 1024**5, E: 1024**6, Z: 1024**7 };
+  return parseFloat(m[1]) * (u[m[2].toUpperCase()] || 1);
+}
+
+// Render a usage bar; colour shifts green -> yellow -> red as it fills.
+// Thin track with the percentage beside it (not overlaid) — see .usage in style.css.
+function usageBar(pct) {
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  const cls = pct >= 90 ? 'red' : pct >= 70 ? 'yellow' : 'green';
+  return `<div class="usage"><div class="usage-bar"><div class="usage-bar-fill ${cls}" style="width:${pct}%"></div></div><span class="usage-pct">${pct}%</span></div>`;
+}
+
+// The same bar with the polarity flipped, for figures where FULL is the good
+// state (battery charge). usageBar() is for consumption — it goes red at 90%,
+// which painted a healthy 100% UPS the same colour as a nearly-full disk.
+// Thresholds follow NUT's own low-battery convention: red under 20, yellow under 50.
+function levelBar(pct) {
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  const cls = pct < 20 ? 'red' : pct < 50 ? 'yellow' : 'green';
+  return `<div class="usage"><div class="usage-bar"><div class="usage-bar-fill ${cls}" style="width:${pct}%"></div></div><span class="usage-pct">${pct}%</span></div>`;
+}
+
+// ─── Modal ──────────────────────────────────────────────
+function openModal(title, html, opts) {
+  $('modal-title').textContent = title;
+  $('modal-body').innerHTML = html;
+  // Wide modals (device/property tables) get more room so they don't overflow.
+  $('modal-content').classList.toggle('wide', !!(opts && opts.wide));
+  $('modal-overlay').style.display = 'flex';
+}
+let modalLocked = false;  // forced modals (e.g. first-run password change) can't be dismissed
+let _onModalClose = null;  // page cleanup hook (e.g. console ws teardown)
+function closeModal() {
+  if (modalLocked) return;
+  $('modal-overlay').style.display = 'none';
+  const fn = _onModalClose; _onModalClose = null;
+  if (fn) try { fn(); } catch (e) {}
+}
+$('modal-overlay').addEventListener('click', e => { if(e.target === $('modal-overlay')) closeModal(); });
+
+// Reusable "type the exact name to confirm" guard for irreversible/destructive
+// actions (pool & dataset destroy, rollback, …). opts: {title, name, warning,
+// label?, button?, onConfirm: async () => {...}}.
+let _confirmNameFn = null;
+function confirmName(opts) {
+  _confirmNameFn = opts.onConfirm;
+  openModal(opts.title, `
+    <div class="alert alert-warning"><strong>Destructive &amp; irreversible.</strong> ${opts.warning}</div>
+    <div class="form-group">
+      <label>${opts.label || 'Type'} <code>${escapeHtml(opts.name)}</code> to confirm</label>
+      <input id="confirm-name" class="form-control" autocomplete="off" spellcheck="false"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();confirmNameGo('${jsArg(opts.name)}');}">
+    </div>
+    <button class="btn btn-danger" onclick="confirmNameGo('${jsArg(opts.name)}')">${opts.button || 'Confirm'}</button>
+  `);
+  setTimeout(() => { const el = $('confirm-name'); if (el) el.focus(); }, 50);
+}
+async function confirmNameGo(name) {
+  if (($('confirm-name').value || '').trim() !== name) { alert('Type the name exactly to confirm.'); return; }
+  const fn = _confirmNameFn; _confirmNameFn = null;
+  if (fn) await fn();
+}
+
+// ─── Navigation ─────────────────────────────────────────
+// The sidebar is rendered at runtime from /api/modules/nav (renderNav below),
+// so clicks are DELEGATED on the <ul> — it exists (empty) at parse time,
+// while the <a> elements don't yet.
+// The desktop shell (templates/index.html + desktop.js) has no sidebar at
+// all, so the <ul> may be absent.
+const _navList = document.querySelector('.nav-list');
+if (_navList) _navList.addEventListener('click', e => {
+  const a = e.target.closest('a[data-page]');
+  if (!a) return;
+  e.preventDefault();
+  showPage(a.dataset.page);
+});
+
+function toggleCat(cat) {
+  const g = document.querySelector(`.nav-group[data-cat="${cat}"]`);
+  if (!g) return;
+  g.classList.toggle('collapsed');
+  try {
+    const st = JSON.parse(localStorage.getItem('navCollapsed') || '{}');
+    st[cat] = g.classList.contains('collapsed');
+    localStorage.setItem('navCollapsed', JSON.stringify(st));
+  } catch (e) {}
+}
+
+function restoreNavCats() {
+  try {
+    const st = JSON.parse(localStorage.getItem('navCollapsed') || '{}');
+    Object.entries(st).forEach(([cat, collapsed]) => {
+      const g = document.querySelector(`.nav-group[data-cat="${cat}"]`);
+      if (g && collapsed) g.classList.add('collapsed');
+    });
+  } catch (e) {}
+}
+
+// Manifest strings are third-party input once plugins exist: identifiers are
+// allowlist-validated before ANY interpolation into selectors/attributes/
+// onclick; free text (labels) always goes through escapeHtml.
+const NAV_ID_RE = /^[A-Za-z0-9_-]+$/;
+const PAGE_ID_RE = /^[A-Za-z0-9_-]+$/;     // becomes part of window['page_<id>']
+                                           // (computed property: '-' is fine)
+const SVG_PATH_RE = /^[MmZzLlHhVvCcSsQqTtAa0-9\s,.\-+eE]+$/;  // path data only
+
+function navIcon(it) {
+  if (typeof it.icon === 'string' && NAV_ID_RE.test(it.icon) &&
+      document.getElementById('i-' + it.icon))
+    return `<svg class="ico"><use href="#i-${it.icon}"/></svg>`;
+  // Plugins without a stock sprite icon supply raw path data (d= only — the
+  // charset allowlist forecloses attribute breakout; path data can't script).
+  if (Array.isArray(it.icon_paths) && it.icon_paths.length &&
+      it.icon_paths.every(d => typeof d === 'string' && SVG_PATH_RE.test(d)))
+    return `<svg class="ico" viewBox="0 0 24 24">${it.icon_paths.map(d => `<path d="${d}"/>`).join('')}</svg>`;
+  return `<svg class="ico"><use href="#i-pkg"/></svg>`;
+}
+
+// Render the whole sidebar from the nav manifest. Emits the exact DOM shape
+// of the old static nav (classes/attributes) so style.css and the
+// module-visibility selectors work unchanged. The Dashboard link is
+// renderer-emitted, not manifest data — a broken manifest can never remove
+// the one guaranteed page.
+function renderNav(nav) {
+  const ul = document.querySelector('.nav-list');
+  const cats = ((nav && nav.categories) || []).slice()
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+  let html = `<li><a href="#" data-page="dashboard"><svg class="ico"><use href="#i-grid"/></svg> Dashboard</a></li>`;
+  for (const c of cats) {
+    if (!NAV_ID_RE.test(String(c.cat || ''))) continue;
+    const items = (c.items || []).filter(it =>
+      PAGE_ID_RE.test(String(it.page || '')) &&
+      (!it.module || NAV_ID_RE.test(String(it.module))));
+    if (!items.length) continue;
+    const lis = items.map(it =>
+      `<li${it.admin_only ? ' class="nav-admin-only"' : ''}${
+         it.module && it.module !== it.page ? ` data-module="${it.module}"` : ''
+       }><a href="#" data-page="${it.page}">${navIcon(it)} ${escapeHtml(it.label || it.page)}</a></li>`
+    ).join('');
+    html += `<li class="nav-group" data-cat="${c.cat}">` +
+      `<div class="nav-cat" onclick="toggleCat('${c.cat}')">${escapeHtml(c.label || c.cat)} <span class="caret">▾</span></div>` +
+      `<ul class="nav-sub">${lis}</ul></li>`;
+  }
+  ul.innerHTML = html;
+  restoreNavCats();   // re-apply persisted collapsed state to the fresh groups
+  document.querySelectorAll('.nav-list a').forEach(a =>
+    a.classList.toggle('active', a.dataset.page === currentPage));
+  themeEvent('nav');
+}
+
+// ─── Feature modules (nav + visibility orchestration) ───
+// applyModules() is the UI-manifest orchestrator: fetch /api/modules/nav
+// (cache the last good manifest — a fetch failure must not brick the nav),
+// render the sidebar, hand plugin assets / declarative pages to their
+// loaders (later script files; typeof-guarded), then apply module
+// visibility. Runs once at login (before the first page renders) and again
+// on every Modules-page toggle.
+let moduleEnabled = {};  // id -> bool (enabled AND installed)
+let uiManifest = null;
+async function applyModules() {
+  let man = null;
+  try {
+    man = await API.get('/api/modules/nav');
+    try { localStorage.setItem('uiManifest.v1', JSON.stringify(man)); } catch (e) {}
+  } catch (e) {
+    try { man = JSON.parse(localStorage.getItem('uiManifest.v1') || 'null'); } catch (e2) {}
+  }
+  if (!man) {   // no server, no cache: minimal shell + visible error
+    renderNav({ categories: [] });
+    $('page-content').innerHTML =
+      '<div class="error">Could not load the module list — navigation is unavailable. Reload to retry.</div>';
+    return;
+  }
+  uiManifest = man;
+  renderNav(man.nav);
+  if (typeof loadPluginAssets === 'function') loadPluginAssets(man.modules);
+  if (typeof registerDeclarativePages === 'function') registerDeclarativePages(man.modules);
+  applyModuleVisibility(man.modules || []);
+}
+
+// ─── Plugin asset delivery ──────────────────────────────
+// Plugin JS/CSS arrive as appended classic <script>/<link> tags (no build
+// step, no ES modules — a parse error in one plugin file kills only that
+// file). Safe because window['page_<id>'] is resolved lazily at click time:
+// a plugin script only has to have PARSED before its page is first opened,
+// and injection starts before the dashboard (always the first page) renders.
+const _loadedAssets = new Set();
+let _pendingScripts = 0;
+
+function _assetUrlOk(u) {   // same-origin absolute paths only
+  return typeof u === 'string' && u.startsWith('/') && !u.startsWith('//');
+}
+
+function loadPluginAssets(mods) {
+  (mods || []).forEach(m => {
+    if (!m.assets || m.enabled === false || m.installed === false) return;
+    (m.assets.css || []).forEach(u => {
+      if (!_assetUrlOk(u) || _loadedAssets.has(u)) return;
+      _loadedAssets.add(u);
+      const l = document.createElement('link');
+      l.rel = 'stylesheet'; l.href = u;
+      document.head.appendChild(l);
+    });
+    (m.assets.js || []).forEach(u => {
+      if (!_assetUrlOk(u) || _loadedAssets.has(u)) return;
+      _loadedAssets.add(u);
+      _pendingScripts++;
+      const s = document.createElement('script');
+      s.src = u;
+      s.async = false;    // preserves order among a plugin's own files
+      s.onload = s.onerror = ev => {
+        _pendingScripts--;
+        if (ev.type === 'error') console.warn('plugin asset failed:', u);
+        // If the user beat the script to its own page, re-render it now.
+        if (document.querySelector('#page-content .plugin-wait') &&
+            typeof window['page_' + currentPage] === 'function') renderPage(currentPage);
+      };
+      document.body.appendChild(s);
+    });
+  });
+}
+
+function applyModuleVisibility(mods) {
+  moduleEnabled = {};
+  mods.forEach(m => {
+    if (!NAV_ID_RE.test(String(m.id || ''))) return;
+    // Not-installed (a plugin whose load failed / dir removed) hides from nav
+    // exactly like disabled; the Modules page shows the distinct third state.
+    const hidden = m.enabled === false || m.installed === false;
+    moduleEnabled[m.id] = m.enabled !== false && m.installed !== false;
+    const a = document.querySelector(`.nav-list a[data-page="${m.id}"]`);
+    if (a && a.parentElement) a.parentElement.classList.toggle('module-hidden', hidden);
+    // Multi-page modules (one toggle, several nav entries) mark each <li>
+    // with data-module=<id> since data-page != the module id.
+    document.querySelectorAll(`.nav-list li[data-module="${m.id}"]`).forEach(
+      li => li.classList.toggle('module-hidden', hidden));
+  });
+  // Hide a whole nav group (e.g. "Sharing") when every item in it is hidden.
+  const readonly = document.body.classList.contains('readonly');
+  document.querySelectorAll('.nav-group').forEach(g => {
+    const anyVisible = Array.from(g.querySelectorAll('.nav-sub > li')).some(li =>
+      !li.classList.contains('module-hidden') &&
+      !(readonly && li.classList.contains('nav-admin-only')));
+    g.classList.toggle('group-hidden', !anyVisible);
+  });
+  // If the page currently in view just got disabled, fall back to the dashboard.
+  const active = document.querySelector('.nav-list a.active');
+  if (active) {
+    const mod = active.parentElement && active.parentElement.dataset.module;
+    if (moduleEnabled[active.dataset.page] === false ||
+        (mod && moduleEnabled[mod] === false)) showPage('dashboard');
+  }
+  // A page whose nav entry AND page function both vanished (plugin removed
+  // server-side between manifests) also falls back.
+  if (currentPage !== 'dashboard' &&
+      !document.querySelector(`.nav-list a[data-page="${currentPage}"]`) &&
+      typeof window['page_' + currentPage] !== 'function') showPage('dashboard');
+}
+
+let _renderSeq = 0;   // bumps per navigation; slow async pages check it
+                      // before writing so a stale render can't clobber the
+                      // page the user has since navigated to
+let _pageCleanup = null;   // per-page teardown (widget refresh timers, …) —
+                           // the page-level twin of _onModalClose
+async function renderPage(page) {
+  _renderSeq++;
+  const cleanup = _pageCleanup; _pageCleanup = null;
+  if (cleanup) try { cleanup(); } catch (e) {}
+  $('page-content').innerHTML = '<div class="loading">Loading...</div>';
+  // Reset scroll: .content scrolls independently, and the window itself
+  // scrolls when the sidebar is taller than the viewport — reset both, or a
+  // page opened while scrolled down starts below its own top.
+  const content = document.querySelector('.content');
+  if (content) content.scrollTop = 0;
+  window.scrollTo(0, 0);
+  try {
+    if (typeof window['page_' + page] === 'function') await window['page_' + page]();
+    else if (_pendingScripts > 0)
+      // a plugin script that defines this page may still be parsing; its
+      // onload handler re-renders when it lands
+      $('page-content').innerHTML = '<div class="loading plugin-wait">Loading plugin…</div>';
+    else $('page-content').innerHTML = '<h2>Page not found</h2>';
+  } catch(e) {
+    $('page-content').innerHTML = `<div class="error">Error: ${escapeHtml(e.message)}</div>`;
+  }
+  themeEvent('page', { page });
+}
+
+// ─── Theme (light / dark) ───────────────────────────────
+function applyThemeLabel() {
+  const light = document.documentElement.classList.contains('theme-light');
+  const el = $('theme-label');
+  if (el) el.textContent = light ? 'Dark theme' : 'Light theme';
+  // The browser-chrome colour follows whatever theme is loaded, not a
+  // fixed pair of hexes — read the token the sidebar is painted with.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', cssToken('--sidebar-bg') || (light ? '#f9f7f3' : '#1b1c1e'));
+}
+function toggleTheme(e) {
+  if (e) e.preventDefault();
+  const light = document.documentElement.classList.toggle('theme-light');
+  try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (err) {}
+  applyThemeLabel();
+  themeEvent('mode', { light });
+}
+// A design token's computed value (e.g. cssToken('--console-bg')); '' when
+// stylesheets have not applied yet.
+function cssToken(name) {
+  try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (e) { return ''; }
+}
+// xterm paints its own canvas, so the consoles take their colours from the
+// tokens at open time rather than a hard-coded black.
+function consoleTheme() {
+  // The console background is dark in every theme and mode, but --text is
+  // the PAGE's text colour — dark in a light mode, i.e. unreadable here. Keep
+  // --text while it reads against the console (a theme's tinted terminal
+  // survives), otherwise fall back to --console-fg.
+  const bg = cssToken('--console-bg') || '#000000';
+  let fg = cssToken('--text') || '#d8d4cc';
+  const alt = cssToken('--console-fg');
+  if (alt && cssContrast(fg, bg) < 7) fg = alt;
+  return { background: bg, foreground: fg, cursor: cssToken('--primary') || '#c1550f' };
+}
+// WCAG contrast ratio of two CSS colours (any syntax the browser parses).
+function cssLuminance(color) {
+  const el = document.createElement('span');
+  el.style.color = color;
+  document.body.appendChild(el);
+  const m = getComputedStyle(el).color.match(/[\d.]+/g) || [0, 0, 0];
+  el.remove();
+  const [r, g, b] = m.slice(0, 3).map(v => {
+    const c = Number(v) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function cssContrast(a, b) {
+  const la = cssLuminance(a), lb = cssLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+// Theme lifecycle events (document-level CustomEvents, 'nexus:<name>'): a
+// theme's optional JS hooks these to rebuild what it draws around the shell.
+// See THEMES.md. Fired after the nav renders, after a page renders, when the
+// login screen shows, when the app shows, and on a dark/light flip.
+function themeEvent(name, detail) {
+  try { document.dispatchEvent(new CustomEvent('nexus:' + name, { detail: detail || {} })); } catch (e) {}
+}
+
+// ─── Machine strip ──────────────────────────────────────
+// The slim identity bar across the top of the content column: hostname, IP,
+// uptime, load, UTC clock. Host/IP land from /api/summary whenever the
+// dashboard renders; uptime/load refresh from the cheap /proc-backed
+// /api/system/resources on the same 30s interval as the dashboard.
+let appVersion = '';
+const stripInfo = { host: '', os: '', ip: '', up: null, load: null };
+
+function renderMachineStrip() {
+  const el = $('machine-strip');
+  if (!el) return;
+  const t = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+  const parts = [];
+  if (stripInfo.host) parts.push(`<span class="ms-host">${escapeHtml(stripInfo.host)}</span>`);
+  if (stripInfo.os) parts.push(`<span>${escapeHtml(stripInfo.os)}</span>`);
+  if (stripInfo.ip) parts.push(`<span>${escapeHtml(stripInfo.ip)}</span>`);
+  if (stripInfo.up != null) parts.push(`<span>up ${fmtUptime(stripInfo.up)}</span>`);
+  if (stripInfo.load) parts.push(`<span>load ${stripInfo.load['1'] ?? '-'} ${stripInfo.load['5'] ?? '-'} ${stripInfo.load['15'] ?? '-'}</span>`);
+  parts.push(`<span class="ms-right">${t}</span>`);
+  if (currentRole === 'admin')
+    parts.push(`<a href="#" class="ms-power" title="Power (reboot / shut down)"
+      onclick="powerModal();return false">${icon('power')}</a>`);
+  el.innerHTML = parts.join('');
+}
+
+// ─── Host power (reboot / shutdown) ─────────────────────
+// POST /api/system/reboot|shutdown fire after a short server-side delay so
+// the response gets out first. Reboot waits for the node to come back;
+// shutdown is guarded by the type-the-hostname confirm (a remote node has
+// nobody to press the button).
+function powerModal() {
+  const host = stripInfo.host || location.hostname;
+  openModal('Power', `
+    <p class="help">Host power control for <code>${escapeHtml(host)}</code>.</p>
+    <div class="alert alert-warning"><strong>Reboot</strong> — the node goes down and comes back;
+      this page waits for it and reloads. Active I/O (transfers, replication, running instances) is interrupted.</div>
+    <div class="toolbar"><button class="btn btn-warning" onclick="closeModal(); powerReboot()">Reboot</button></div>
+    <div class="alert alert-danger" style="margin-top:14px"><strong>Shut down</strong> — the node powers off and
+      <em>stays off</em> until started at the machine (or via its BMC / wake-on-LAN). On a remote node
+      there may be nobody to press the button.</div>
+    <div class="toolbar"><button class="btn btn-danger" onclick="closeModal(); powerShutdownConfirm()">Shut down…</button></div>`);
+}
+
+async function powerReboot() {
+  try { await API.post('/api/system/reboot', {}); } catch (e) { alert(e.message); return; }
+  powerWait('Rebooting');
+}
+
+function powerShutdownConfirm() {
+  const host = stripInfo.host || location.hostname;
+  confirmName({
+    title: 'Shut down host', name: host,
+    warning: `<code>${escapeHtml(host)}</code> will power off and stay off — it must be started
+      at the machine (or via BMC / wake-on-LAN). This dashboard will be unreachable.`,
+    button: 'Shut down',
+    onConfirm: async () => {
+      closeModal();
+      try { await API.post('/api/system/shutdown', {}); } catch (e) { alert(e.message); return; }
+      $('page-content').innerHTML = `<h2>Shutting down</h2>
+        <div class="alert alert-danger">The node is powering off — this page will go dark in a few seconds.</div>`;
+    },
+  });
+}
+
+function powerWait(label) {
+  $('page-content').innerHTML = `<h2>${escapeHtml(label)}…</h2>
+    <div class="alert alert-info"><strong>Waiting for the node to come back.</strong>
+      The dashboard reloads automatically when it answers again (typically 1–3 minutes).</div>`;
+  const started = Date.now();
+  const t = setInterval(async () => {
+    try {
+      const r = await fetch('/api/version');
+      // Back up (200) or back up with the session lost (401) — either way, reload.
+      if (r.status === 200 || r.status === 401) { clearInterval(t); location.reload(); }
+    } catch (e) {}   // still down — keep waiting
+    if (Date.now() - started > 15 * 60 * 1000) clearInterval(t);
+  }, 5000);
+}
+
+async function refreshMachineStrip() {
+  try {
+    const r = await API.get('/api/system/resources');
+    stripInfo.up = r.uptime_seconds;
+    stripInfo.load = r.load || null;
+  } catch (e) {}   // strip degrades to host + clock; never throws at callers
+  renderMachineStrip();
+}
+
+// ─── Dashboard ──────────────────────────────────────────
+function fmtUptime(sec) {
+  sec = Number(sec) || 0;
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  return (d ? d + 'd ' : '') + (d || h ? h + 'h ' : '') + m + 'm';
+}
+
+// One box per real, persistent filesystem: a pool (once, usable figures),
+// a disk filesystem, or a network mount. Nothing tmpfs/overlay/snap/loop.
+function mountsPanel(mounts) {
+  if (!mounts || !mounts.length) return '';
+  const kindBadge = m => m.kind === 'zfs' ? '<span class="status-badge gray">zfs pool</span>'
+    : m.kind === 'remote' ? `<span class="status-badge gray">${escapeHtml(m.fstype)}</span>` : `<span class="status-badge gray">${escapeHtml(m.fstype)}</span>`;
+  return `<h3>Filesystems</h3><div class="cards">${mounts.map(m => `
+      <div class="card">
+        <div class="card-head" title="${escapeHtml(m.source)}">${escapeHtml(m.mount)} ${kindBadge(m)}</div>
+        ${m.pct == null ? `<div class="card-value" style="font-size:1.2em">unreachable</div><div class="card-sub">${escapeHtml(m.error || '')}</div>`
+          : `<div class="card-value">${m.pct}<span class="card-unit">% used</span></div>${usageBar(m.pct)}
+             <div class="card-sub">${fmtBytes(m.used)} / ${fmtBytes(m.total)} · ${fmtBytes(m.avail)} free</div>`}
+      </div>`).join('')}</div>`;
+}
+
+function resourcesPanel(r) {
+  if (!r) return '';
+  const mem = r.memory || {}, sw = r.swap || {}, load = r.load || {};
+  const cpuCls = r.cpu_pct >= 90 ? 'red' : r.cpu_pct >= 70 ? 'yellow' : 'green';
+  const swapRow = (sw.total > 0)
+    ? `<div class="res-item"><div class="res-label">Swap</div>${usageBar(sw.pct || 0)}
+         <div class="card-sub">${fmtBytes(sw.used)} / ${fmtBytes(sw.total)}</div></div>` : '';
+  return `<h3>System Resources</h3>
+    <div class="cards">
+      <div class="card">
+        <div class="card-head">CPU</div>
+        <div class="card-value">${(Number(r.cpu_pct) || 0).toFixed(1)}<span class="card-unit">%</span></div>
+        ${usageBar(r.cpu_pct || 0)}
+        <div id="spark-cpu"></div>
+        <div class="card-sub">${r.cpus || 1} cores · load ${load['1'] ?? '-'} / ${load['5'] ?? '-'} / ${load['15'] ?? '-'}</div>
+      </div>
+      <div class="card">
+        <div class="card-head">Memory</div>
+        <div class="card-value">${mem.pct ?? 0}<span class="card-unit">%</span></div>
+        ${usageBar(mem.pct || 0)}
+        <div id="spark-mem"></div>
+        <div class="card-sub">${fmtBytes(mem.used)} / ${fmtBytes(mem.total)} used${sw.total > 0 ? ` · swap ${fmtBytes(sw.used)}/${fmtBytes(sw.total)}` : ''}</div>
+      </div>
+      ${r.io ? `<div class="card">
+        <div class="card-head">Disk I/O</div>
+        <div class="card-value" style="font-size:1.4em">${fmtBytes(r.io.disk_total.read_bps)}/s<span class="card-unit"> read</span></div>
+        <div class="card-sub">${fmtBytes(r.io.disk_total.write_bps)}/s write · ${Object.keys(r.io.disks).length} disk${Object.keys(r.io.disks).length === 1 ? '' : 's'} · last ${r.io.interval_s}s</div>
+        <div id="spark-disk"></div>
+        <div class="card-sub" title="${escapeHtml(Object.entries(r.io.disks).map(([d, v]) => `${d}: ${fmtBytes(v.read_bps)}/s r, ${fmtBytes(v.write_bps)}/s w`).join('\n'))}">${escapeHtml(Object.entries(r.io.disks).sort((a, b) => (b[1].read_bps + b[1].write_bps) - (a[1].read_bps + a[1].write_bps)).slice(0, 1).map(([d, v]) => `busiest: ${d} ${fmtBytes(v.read_bps + v.write_bps)}/s`)[0] || '')}</div>
+      </div>
+      <div class="card">
+        <div class="card-head">Network</div>
+        <div class="card-value" style="font-size:1.4em">${fmtBytes(r.io.net_total.rx_bps)}/s<span class="card-unit"> in</span></div>
+        <div class="card-sub">${fmtBytes(r.io.net_total.tx_bps)}/s out · ${Object.keys(r.io.net).length} interface${Object.keys(r.io.net).length === 1 ? '' : 's'}</div>
+        <div id="spark-net"></div>
+        <div class="card-sub" title="${escapeHtml(Object.entries(r.io.net).map(([d, v]) => `${d}: ${fmtBytes(v.rx_bps)}/s in, ${fmtBytes(v.tx_bps)}/s out`).join('\n'))}">${escapeHtml(Object.entries(r.io.net).sort((a, b) => (b[1].rx_bps + b[1].tx_bps) - (a[1].rx_bps + a[1].tx_bps)).slice(0, 1).map(([d, v]) => `busiest: ${d} ${fmtBytes(v.rx_bps + v.tx_bps)}/s`)[0] || '')}</div>
+      </div>` : ''}
+      ${r.temps && (r.temps.cpu != null || r.temps.nvme != null) ? `<div class="card">
+        <div class="card-head">Temperatures</div>
+        <div class="card-value">${r.temps.cpu != null ? r.temps.cpu.toFixed(0) : '—'}<span class="card-unit">°C cpu</span></div>
+        <div class="card-sub">${r.temps.nvme != null ? `nvme ${r.temps.nvme.toFixed(0)}°C · ` : ''}${(r.temps.sensors || []).length} sensor${(r.temps.sensors || []).length === 1 ? '' : 's'}</div>
+        <div class="card-sub" title="${escapeHtml((r.temps.sensors || []).map(t => `${t.chip} ${t.label} ${t.c}°C`).join('\n'))}">${escapeHtml((r.temps.sensors || []).filter(t => t.c === Math.max(...(r.temps.sensors || []).map(x => x.c))).map(t => `hottest: ${t.chip} ${t.label}`)[0] || '')}</div>
+      </div>` : ''}
+      <div class="card">
+        <div class="card-head">Uptime</div>
+        <div class="card-value" style="font-size:1.4em">${fmtUptime(r.uptime_seconds)}</div>
+        <div class="card-sub">${r.cpus || 1} logical CPUs</div>
+      </div>
+    </div>`;
+}
+
+// Minimal inline-SVG sparkline from [[ts,value],...] — no chart lib (no build step).
+function sparkline(points, opts) {
+  opts = opts || {};
+  const w = opts.w || 140, h = opts.h || 26, pad = 2;
+  const pts = (points || []).filter(p => p && p[1] != null);
+  if (pts.length < 2) return '<span class="help" style="font-size:.78em">collecting…</span>';
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (y1 === y0) y1 = y0 + 1;
+  const sx = t => pad + (x1 === x0 ? 0 : (t - x0) / (x1 - x0)) * (w - 2 * pad);
+  const sy = v => (h - pad) - (v - y0) / (y1 - y0) * (h - 2 * pad);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + sx(p[0]).toFixed(1) + ' ' + sy(p[1]).toFixed(1)).join(' ');
+  // Line + a faint area under it + an emphasized last point, all in the
+  // accent token so every theme recolours them (the mockups drew them so).
+  const last = pts[pts.length - 1];
+  const area = d + ` L${sx(last[0]).toFixed(1)} ${h} L${sx(pts[0][0]).toFixed(1)} ${h} Z`;
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">` +
+    `<path class="spark-area" d="${area}" fill="var(--primary,#c1550f)" opacity="0.14" stroke="none"/>` +
+    `<path class="spark-line" d="${d}" fill="none" stroke="var(--primary,#c1550f)" stroke-width="1.5"/>` +
+    `<circle class="spark-end" cx="${sx(last[0]).toFixed(1)}" cy="${sy(last[1]).toFixed(1)}" r="1.8" fill="var(--primary,#c1550f)"/></svg>`;
+}
+
+// Lazily fill dashboard resource sparklines from the history store (last 24h).
+async function fillResourceSparks() {
+  for (const [id, metric, label] of [['spark-cpu', 'cpu_pct', ''], ['spark-mem', 'mem_pct', ''],
+                                     ['spark-disk', 'disk_write_bps', 'total'], ['spark-net', 'net_rx_bps', 'total']]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    try { const h = await API.get(`/api/history?metric=${metric}&label=${label}&since=86400`); el.innerHTML = sparkline(h.points); }
+    catch (e) {}
+  }
+}
+
+
+// ─── Dashboard cards ────────────────────────────────────
+// A module contributes a card by defining a global `dashcard_<id>(ctx)`
+// returning an HTML string ('' = no card this render) — the same
+// name-convention-resolved-lazily idiom as page_*. ctx: {s (the /api/summary
+// payload), svc, dot}. Declarative plugins with no JS get a card from their
+// manifest's dashboard_card instead (rendered by widgets.js).
+// BUILTIN_CARD_ORDER is ordering data, not wiring — plugin cards need no
+// edit here; they append after, in manifest order.
+const BUILTIN_CARD_ORDER = ['zfs', 'iscsi', 'nfs', 'smb', 'disks',
+                            'llamacpp', 'gpu', 'minidlna', 'upsmon'];
+
+function dashcard_zfs(ctx) {
+  const z = ctx.s.zfs || {}, dot = ctx.dot;
+  return `
+    <div class="card card-link" onclick="showPage('zfs')">
+      <div class="card-head"><span class="status-dot ${z.online ? dot('zfs') : 'red'}"></span>ZFS Pools</div>
+      <div class="card-value">${z.pools || 0} <span class="card-unit">pool${z.pools === 1 ? '' : 's'}</span></div>
+      <div class="card-sub">${escapeHtml(z.used || '0')} / ${escapeHtml(z.size || '0')}${z.scanning ? ' · scrubbing' : ''}</div>
+      ${z.pools ? usageBar(z.pct || 0) : ''}
+    </div>`;
+}
+
+function dashcard_iscsi(ctx) {
+  const isc = ctx.s.iscsi || {}, dot = ctx.dot;
+  return `
+    <div class="card card-link" onclick="showPage('iscsi')">
+      <div class="card-head"><span class="status-dot ${dot('iscsi')}"></span>iSCSI</div>
+      <div class="card-value">${isc.targets || 0} <span class="card-unit">target${isc.targets === 1 ? '' : 's'}</span></div>
+      <div class="card-sub">${isc.luns || 0} LUNs · ${isc.sessions || 0} connected</div>
+      <div class="card-sub">${escapeHtml(isc.provisioned || '0B')} provisioned</div>
+    </div>`;
+}
+
+function dashcard_nfs(ctx) {
+  const nf = ctx.s.nfs || {}, dot = ctx.dot;
+  return `
+    <div class="card card-link" onclick="showPage('nfs')">
+      <div class="card-head"><span class="status-dot ${dot('nfs')}"></span>NFS</div>
+      <div class="card-value">${nf.exports || 0} <span class="card-unit">export${nf.exports === 1 ? '' : 's'}</span></div>
+      <div class="card-sub">${nf.clients || 0} client mount${nf.clients === 1 ? '' : 's'}</div>
+    </div>`;
+}
+
+function dashcard_smb(ctx) {
+  const sm = ctx.s.smb || {}, dot = ctx.dot;
+  return `
+    <div class="card card-link" onclick="showPage('smb')">
+      <div class="card-head"><span class="status-dot ${dot('smb')}"></span>SMB</div>
+      <div class="card-value">${sm.shares || 0} <span class="card-unit">share${sm.shares === 1 ? '' : 's'}</span></div>
+      <div class="card-sub">${sm.users || 0} users · ${sm.connections || 0} connections</div>
+    </div>`;
+}
+
+function dashcard_disks(ctx) {
+  const dk = ctx.s.disks || {};
+  const smartLabel = dk.smart_ok === false ? 'SMART FAIL' : (dk.smart_ok === null ? 'SMART n/a' : 'SMART OK');
+  return `
+    <div class="card card-link" onclick="showPage('disks')">
+      <div class="card-head"><span class="status-dot ${dk.smart_ok === false ? 'red' : 'green'}"></span>Disks</div>
+      <div class="card-value">${dk.total || 0} <span class="card-unit">disks</span></div>
+      <div class="card-sub">${dk.free || 0} free · ${smartLabel}</div>
+    </div>`;
+}
+
+// llama.cpp health/metrics card. Fetched separately (it pings llama-server's
+// /health + /metrics) so /api/summary stays cheap and nothing runs when the
+// module is off (collectDashboardCards skips disabled modules' cards).
+async function dashcard_llamacpp() {
+  let lh = null;
+  try { lh = await API.get('/api/llama/health'); } catch (e) {}
+  const up = !!(lh && lh.ok);
+  const m = (lh && lh.metrics) || {};
+  const bits = [];
+  if (up) {
+    bits.push(escapeHtml(lh.status || 'ok'));
+    if (m.kv_cache_usage_ratio != null) bits.push(`KV ${Math.round(m.kv_cache_usage_ratio * 100)}%`);
+    if (m.requests_processing != null) bits.push(`${m.requests_processing} active`);
+    if (lh.tokens_per_sec != null) bits.push(`${lh.tokens_per_sec} tok/s`);
+  }
+  return `
+    <div class="card card-link" onclick="showPage('llamacpp')">
+      <div class="card-head"><span class="status-dot ${up ? 'green' : 'red'}"></span>llama.cpp</div>
+      <div class="card-value">${up ? 'up' : 'down'}</div>
+      <div class="card-sub">${up ? bits.join(' · ') : 'server not responding'}</div>
+      ${up && m.tokens_predicted_total != null ? `<div class="card-sub">${m.tokens_predicted_total} tokens generated</div>` : ''}
+    </div>`;
+}
+
+// GPU card — only when tooling is present ('' otherwise). Fetched separately
+// (nvidia-smi/rocm-smi) so /api/summary stays cheap on GPU-less hosts.
+async function dashcard_gpu() {
+  let gpu = null;
+  try { gpu = await API.get('/api/gpu'); } catch (e) {}
+  if (!(gpu && gpu.available && (gpu.gpus || []).length)) return '';
+  const g0 = gpu.gpus[0], n = gpu.gpus.length;
+  const bits = [];
+  if (g0.mem_pct != null) bits.push(`${Math.round(g0.mem_pct)}% VRAM`);
+  if (g0.temp != null) bits.push(`${Math.round(g0.temp)}°C`);
+  if (g0.power != null) bits.push(`${Math.round(g0.power)}W`);
+  return `
+    <div class="card card-link" onclick="showPage('gpu')">
+      <div class="card-head"><span class="status-dot green"></span>GPU</div>
+      <div class="card-value">${g0.util != null ? Math.round(g0.util) : 0}<span class="card-unit">% util</span></div>
+      ${usageBar(g0.util || 0)}
+      <div class="card-sub">${escapeHtml(g0.name || 'GPU')}${n > 1 ? ` +${n - 1} more` : ''}</div>
+      <div class="card-sub">${bits.join(' · ')}</div>
+    </div>`;
+}
+
+// DLNA Media card. Media-library counts are fetched separately (reads
+// minidlna's files.db) so /api/summary stays cheap.
+async function dashcard_minidlna(ctx) {
+  const svc = ctx.svc, dot = ctx.dot;
+  const up = svc.minidlna && svc.minidlna.active === 'active';
+  let lib = null;
+  try { lib = (await API.get('/api/minidlna/stats')).library; } catch (e) {}
+  const has = lib && lib.available;
+  return `
+    <div class="card card-link" onclick="showPage('minidlna')">
+      <div class="card-head"><span class="status-dot ${up ? dot('minidlna') : 'red'}"></span>DLNA Media</div>
+      <div class="card-value">${has ? Number(lib.objects || 0).toLocaleString() : (up ? 'up' : 'down')}${has ? ' <span class="card-unit">items</span>' : ''}</div>
+      <div class="card-sub">${has ? `${Number(lib.audio || 0).toLocaleString()} audio · ${Number(lib.video || 0).toLocaleString()} video · ${Number(lib.image || 0).toLocaleString()} image` : 'MiniDLNA media server'}</div>
+      ${has ? `<div class="card-sub">${fmtBytesIEC(lib.size)} database</div>` : ''}
+    </div>`;
+}
+
+async function collectDashboardCards(ctx) {
+  const ids = BUILTIN_CARD_ORDER.slice();
+  ((uiManifest && uiManifest.modules) || []).forEach(m => {
+    if (!ids.includes(m.id) &&
+        (typeof window['dashcard_' + m.id] === 'function' || m.dashboard_card))
+      ids.push(m.id);
+  });
+  const out = [];
+  for (const id of ids) {
+    if (moduleEnabled[id] === false) continue;   // disabled module: no card
+    try {
+      const fn = window['dashcard_' + id];
+      let html = '';
+      if (typeof fn === 'function') html = await fn(ctx);
+      else if (typeof renderDeclarativeCard === 'function') {
+        const m = ((uiManifest && uiManifest.modules) || []).find(x => x.id === id);
+        if (m && m.dashboard_card) html = await renderDeclarativeCard(m.id, m.dashboard_card, ctx);
+      }
+      if (html) out.push(html);
+    } catch (e) {}   // one bad card must never blank the dashboard
+  }
+  return out;
+}
+
+async function page_dashboard() {
+  const seq = _renderSeq;
+  const [s, res] = await Promise.all([
+    API.get('/api/summary'),
+    API.get('/api/system/resources').catch(() => null),
+  ]);
+  const svc = s.services || {};
+  const dot = k => (svc[k] && svc[k].active === 'active') ? 'green' : 'red';
+  const sys = s.system || {};
+  const z = s.zfs || {};
+  const alerts = s.alerts || [];
+
+  // Feed the machine strip the identity fields only /api/summary carries.
+  if (sys.hostname) stripInfo.host = sys.hostname;
+  if (sys.os) stripInfo.os = sys.os;
+  if (sys.ip) stripInfo.ip = sys.ip;
+  renderMachineStrip();
+
+  const healthLine = alerts.length
+    ? `<div class="alert alert-warning"><strong>${alerts.length} issue${alerts.length > 1 ? 's' : ''}:</strong> ${alerts.map(escapeHtml).join(' · ')}</div>`
+    : `<div class="health-ok">✓ All systems healthy</div>`;
+  // Pending-updates flag beside the health line (updates module summary
+  // block; absent when the module is disabled). Security escalates the color.
+  const upd = s.updates || {};
+  const updFlag = (upd.security || 0) > 0
+    ? `<a href="#" class="upd-flag upd-sec" onclick="showPage('updates');return false">Required Security updates available</a>`
+    : (upd.available || 0) > 0
+      ? `<a href="#" class="upd-flag" onclick="showPage('updates');return false">Updates available</a>`
+      : '';
+  const health = `<div class="health-row">${healthLine}${updFlag}</div>`;
+
+  // First-run welcome: no pools yet -> point at the next steps. Skipped when the
+  // ZFS module is disabled (e.g. an AI-focused node has no use for a pool prompt).
+  const welcome = (currentRole === 'admin' && moduleEnabled['zfs'] !== false && (z.pools || 0) === 0) ? `
+    <div class="alert alert-info">
+      <strong>Welcome — let's get started.</strong> No ZFS pools exist yet.
+      <div class="toolbar" style="margin-top:8px">
+        <button class="btn btn-sm" onclick="showPage('disks')">1. Review disks</button>
+        <button class="btn btn-sm" onclick="showPage('zfs')">2. Create a pool</button>
+        <button class="btn btn-sm" onclick="showPage('smb')">3. Create a share</button>
+        <button class="btn btn-sm btn-outline" onclick="showPage('notifications')">Set up notifications</button>
+      </div>
+    </div>` : '';
+
+  const cards = `<div class="cards">${
+    (await collectDashboardCards({ s, svc, dot })).join('')
+  }</div>`;
+
+  // The card fetches above take real time; if the user navigated away in the
+  // meantime, writing now would clobber the page they moved to.
+  if (seq !== _renderSeq) return;
+
+  // Host/IP/uptime moved to the always-visible machine strip — no info-row here.
+  $('page-content').innerHTML = `
+    <h2>Dashboard</h2>
+    ${welcome}
+    ${health}
+    ${cards}
+    ${resourcesPanel(res)}
+    ${mountsPanel(res && res.mounts)}
+  `;
+  fillResourceSparks();
+}
+
+// ─── Disks ──────────────────────────────────────────────
+
+function fmtBytes(n) {
+  n = Number(n) || 0;
+  const u = ['B','K','M','G','T','P'];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n : n.toFixed(1)) + u[i];
+}
+// IEC / binary units with a space (e.g. "14.2 MiB") — matches minidlna's own
+// reporting style for the media-database size.
+function fmtBytesIEC(n) {
+  n = Number(n) || 0;
+  const u = ['B','KiB','MiB','GiB','TiB','PiB'];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n : n.toFixed(1)) + ' ' + u[i];
+}
+
+
+function fmtTs(sec) {
+  if (!sec) return '-';
+  try { return new Date(sec * 1000).toLocaleString(); } catch (e) { return '-'; }
+}
+
+
+
+// ─── Settings / TLS ─────────────────────────────────────
+// System submenu pages — split out of the old monolithic Settings page.
+function adminOnlyPage(title) {
+  $('page-content').innerHTML = `<h2>${title}</h2><div class="alert alert-warning">Administrator access required.</div>`;
+}
+
+
+
+
+
+
+
+
+
+// ─── Authentication ─────────────────────────────────────
+// Set from /api/me when this node is configured for single sign-on; null
+// otherwise, which is every node by default. Purely additive: the password
+// box below is always present, so an issuer outage never locks the node out
+// of its own UI.
+let ssoConfig = null;
+
+function ssoSignIn() {
+  const next = location.pathname + location.search + location.hash;
+  location.href = ssoConfig.issuer + '/sso/authorize?aud='
+    + encodeURIComponent(ssoConfig.audience) + '&next=' + encodeURIComponent(next);
+}
+
+function renderSsoButton() {
+  const form = $('login-form') || $('login-screen');
+  if (!ssoConfig || !form || $('sso-btn')) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'sso-block';
+  wrap.innerHTML = '<div class="sso-sep"><span>or</span></div>'
+    + '<button type="button" id="sso-btn" class="btn sso-btn">Sign in with Nexus SSO</button>';
+  form.appendChild(wrap);
+  $('sso-btn').addEventListener('click', ssoSignIn);
+}
+
+function showLogin() {
+  isAuthed = false;
+  document.querySelector('.sidebar').style.display = 'none';
+  document.querySelector('.content').style.display = 'none';
+  $('machine-strip').style.display = 'none';
+  closeModal();
+  // The login box names the machine being signed in to.
+  const sub = $('login-sub');
+  if (sub && location.hostname) sub.textContent = location.hostname;
+  $('login-screen').style.display = 'flex';
+  $('login-pass').value = '';
+  renderSsoButton();
+  themeEvent('login');
+  // A failed round trip must not bounce straight back out to the issuer, or
+  // a misconfigured pair loops forever.
+  const failed = new URLSearchParams(location.search).has('sso_error');
+  if (ssoConfig && ssoConfig.auto_redirect && !failed) { ssoSignIn(); return; }
+  if (failed) {
+    const err = $('login-error');
+    if (err) {
+      err.textContent = 'Single sign-on did not complete. Sign in below.';
+      err.style.display = 'block';
+    }
+  }
+  $('login-user').focus();
+}
+
+async function showApp(user, fqdn, role, mustChange, version) {
+  isAuthed = true;
+  currentRole = role || 'admin';
+  $('login-screen').style.display = 'none';
+  document.querySelector('.sidebar').style.display = '';
+  document.querySelector('.content').style.display = '';
+  document.body.classList.toggle('readonly', currentRole !== 'admin');
+  currentUser = user || '';
+  if (version) appVersion = version;
+  // Brand block: product name up top, machine identity + version beneath.
+  stripInfo.host = fqdn || stripInfo.host;
+  const sub = $('sidebar-sub');
+  if (sub) sub.innerHTML =
+    `<strong>${escapeHtml((fqdn || location.hostname || '').split('.')[0])}</strong>` +
+    (appVersion ? ` · v${escapeHtml(appVersion)}` : '');
+  $('machine-strip').style.display = '';
+  refreshMachineStrip();   // fire-and-forget; strip fills in as data lands
+  $('account-user').textContent = user ? `Signed in as ${user}${currentRole !== 'admin' ? ' · read-only' : ''}` : '';
+  themeEvent('app', { user, role: currentRole });
+  await applyModules();   // load module state before the dashboard first renders
+  showPage('dashboard');
+  if (mustChange) forcePasswordChange();
+}
+
+// First-run: force the bootstrap admin to set a real password before anything else.
+function forcePasswordChange() {
+  modalLocked = true;
+  openModal('Set a new password to continue', `
+    <div class="alert alert-warning">This account is still using its initial setup password. Choose a new one to continue.</div>
+    <div class="form-group"><label>Current password</label><input id="cp-old" type="password" class="form-control" autocomplete="current-password"></div>
+    <div class="form-group"><label>New password</label><input id="cp-new" type="password" class="form-control" autocomplete="new-password"></div>
+    <div class="form-group"><label>Confirm new password</label><input id="cp-confirm" type="password" class="form-control" autocomplete="new-password"></div>
+    <p class="help">Must be at least 8 characters.</p>
+    <button class="btn" onclick="doChangePassword(true)">Set Password</button>`);
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  const errEl = $('login-error');
+  errEl.style.display = 'none';
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ username: $('login-user').value.trim(), password: $('login-pass').value })
+    });
+    const j = await r.json();
+    if (!r.ok || !j.success) {
+      errEl.textContent = j.error || 'Login failed';
+      errEl.style.display = 'block';
+      return;
+    }
+    showApp(j.user, j.fqdn, j.role, j.must_change, j.version);
+  } catch (err) {
+    errEl.textContent = 'Login failed';
+    errEl.style.display = 'block';
+  }
+}
+
+async function doLogout(e) {
+  if (e) e.preventDefault();
+  try { await fetch('/api/logout', { method: 'POST' }); } catch (err) {}
+  showLogin();
+}
+
+function changePassword(e) {
+  if (e) e.preventDefault();
+  openModal('Change Password', `
+    <div class="form-group"><label>Current password</label><input id="cp-old" type="password" class="form-control" autocomplete="current-password"></div>
+    <div class="form-group"><label>New password</label><input id="cp-new" type="password" class="form-control" autocomplete="new-password"></div>
+    <div class="form-group"><label>Confirm new password</label><input id="cp-confirm" type="password" class="form-control" autocomplete="new-password"></div>
+    <p class="help">Must be at least 8 characters.</p>
+    <button class="btn" onclick="doChangePassword()">Update Password</button>
+  `);
+}
+
+async function doChangePassword(forced) {
+  const oldp = $('cp-old').value, newp = $('cp-new').value, confirm = $('cp-confirm').value;
+  if (newp !== confirm) { alert('New passwords do not match'); return; }
+  try {
+    await API.post('/api/account/password', { old_password: oldp, new_password: newp });
+    modalLocked = false;
+    closeModal();
+    alert('Password updated.');
+    if (forced) showPage('dashboard');
+  } catch (err) { alert(err.message); }
+}
+
+async function checkAuth() {
+  try {
+    const r = await fetch('/api/me');
+    // `sso` is present only on nodes configured for it, and rides on the 401
+    // too so the login screen can offer it before anyone is authenticated.
+    const j = await r.json().catch(() => ({}));
+    ssoConfig = j.sso || null;
+    if (!r.ok) { showLogin(); return; }
+    showApp(j.user, j.fqdn, j.role, j.must_change, j.version);
+  } catch (err) { showLogin(); }
+}
+
+// ─── Init ───────────────────────────────────────────────
+// Set when this page was opened via a network-handoff link on the *new* IP
+// (so we're known to be reachable there) — drives the "Finalize" primary action.
+let cameFromHandoff = false;
+
+async function bootstrap() {
+  applyThemeLabel();
+  const params = new URLSearchParams(window.location.search);
+  const h = params.get('nethandoff');
+  if (h) {
+    try {
+      const r = await fetch('/api/network/handoff', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: h })
+      });
+      const j = await r.json().catch(() => ({}));
+      history.replaceState(null, '', window.location.pathname);  // never leave the token in the URL
+      if (r.ok && j.success) {
+        cameFromHandoff = true;
+        await showApp(j.user, j.fqdn, j.role, false, j.version);
+        showPage('network');
+        return;
+      }
+    } catch (e) {
+      history.replaceState(null, '', window.location.pathname);
+    }
+  }
+  checkAuth();
+}
+// Boot after every script has parsed: the desktop shell (desktop.js, loaded
+// last) replaces showLogin/showApp/showPage, and /api/me can answer before a
+// later script file has even been fetched.
+document.addEventListener('DOMContentLoaded', bootstrap);
+
+// Auto-refresh dashboard every 10s
+setInterval(async () => {
+  if (!isAuthed) return;
+  refreshMachineStrip();   // cheap /proc-backed endpoint; keeps uptime/load/clock live
+  // Refresh the dashboard metrics when it's open and no modal is in the way.
+  const active = document.querySelector('.nav-list a.active');
+  if (active && active.dataset.page === 'dashboard' && $('modal-overlay').style.display === 'none') {
+    try { await page_dashboard(); } catch(e) {}
+  }
+}, 30000);

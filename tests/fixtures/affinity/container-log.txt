@@ -1,0 +1,42 @@
+[build] affinity  nogit  compiled Oct 15 2026 21:40:47
+tensor parallel across 4 GPUs
+model: 43 layers, 256 experts (top-6), hidden 4096, vocab 129280
+dspark: 3 stages, block 5, taps 40 41 42, 7.03 GiB
+kv cache: 262144 positions reserved, 262144 backed with 2.82 GiB of VRAM (128 raw/layer, widest 65538 of 1417298 comp rows)
+prefill arena: 0.50 GiB/card at 1408 tokens (74368 f32 + 40960 bf16 rows a token, 370 KiB), 27.45 GiB free after
+prefill: batched, up to 1408 tokens per chunk
+draft arena: 7.0 MiB/card
+dense on gpu: 678 tensors, 11.73 GiB across 4 ranks (2.93 GiB/card) in 9.7 s
+placement sizing: card 0 free 27300 MiB, reserve 261 MiB + engine-after 0 MiB (shadow 0 slots, codebook 0.0 MiB) -> 804 slots
+placement sizing: card 1 free 27300 MiB, reserve 261 MiB + engine-after 0 MiB (shadow 0 slots, codebook 0.0 MiB) -> 804 slots
+placement sizing: card 2 free 27300 MiB, reserve 261 MiB + engine-after 0 MiB (shadow 0 slots, codebook 0.0 MiB) -> 804 slots
+placement sizing: card 3 free 27302 MiB, reserve 261 MiB + engine-after 0 MiB (shadow 0 slots, codebook 0.0 MiB) -> 804 slots
+routed experts: 4-way shards, gate/up 512 of 2048 rows, down 512 of 2048 cols, 2.17 MiB a shard, 804 experts a card
+dspark: 768/768 draft experts resident, 6.78 GiB VRAM in 3.2 s
+placement headroom: 25558 MiB free on card 0 after the slabs
+placement sizing: card 0 free 25322 MiB, reserve 261 MiB + engine-after 0 MiB (shadow 0 slots, codebook 0.0 MiB) -> 11570 slots
+placement sizing: card 1 free 25322 MiB, reserve 261 MiB + engine-after 0 MiB (shadow 0 slots, codebook 0.0 MiB) -> 11570 slots
+placement sizing: card 2 free 25322 MiB, reserve 261 MiB + engine-after 0 MiB (shadow 0 slots, codebook 0.0 MiB) -> 11570 slots
+placement sizing: card 3 free 25324 MiB, reserve 261 MiB + engine-after 0 MiB (shadow 0 slots, codebook 0.0 MiB) -> 11571 slots
+routed experts: 4-way shards, gate/up 512 of 2048 rows, down 512 of 2048 cols, 2.17 MiB a shard, 11570 experts a card
+placement headroom: 260 MiB free on card 0 after the slabs
+static placement: 11008/11008 experts resident (100.0%), 97.6 GiB VRAM in 42.2 s (2.48 GB/s)
+page cache: released 108.1 GiB of container mapping — free 87.9 -> 95.9 GiB, cached 28.2 -> 20.2 GiB
+host pool: disabled (nothing to pool) — the cpu fallback reads the mapping
+
+VRAM per card, MiB, measured by differencing the driver's free count per phase:
+  hip context + staging              -1706    -31170       152       152
+  dense weights                       2724      2724      2724      2722
+  draft dense weights                  296       296       296       296
+  kv cache                             760       760       760       760
+  prefill arena                        740       740       740       740
+  compressor + indexer                 570       570       570       570
+  draft expert slab                   1746      1746      1746      1746
+  routed expert slab                 25298     25298     25298     25298
+  runtime, before any phase           1936     31400        78        78
+  unattributed                           0         0         0         0
+  = in use                           32364     32364     32364     32362
+    card total                       32624     32624     32624     32624
+host RAM: 0.00 GiB expert pool + 9.67 GiB everything else (peak so far 9.67 GiB)
+listening on http://0.0.0.0:8095  (hit rate will be reported on exit)
+slot 0: 50 tok in 0.70s (71.1 t/s), 19 blocks, 95 drafted, 32 accepted (33.7%, 2.63 tok/block)

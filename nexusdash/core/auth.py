@@ -1,0 +1,587 @@
+"""Authentication, users, API tokens and RBAC — extracted verbatim from the
+single-file dashboard, with routes moved onto a blueprint.
+
+Model (unchanged):
+  * Session login, PBKDF2 hashes (werkzeug.security). A before_request guard
+    (require_login, registered app-wide by create_app) protects everything
+    except PUBLIC_ENDPOINTS.
+  * Credentials + the session secret live in auth.json (mode 0600, next to
+    app.py; override via DASHBOARD_AUTH_FILE). Each user is a record
+    {password (pbkdf2), role, smb}; legacy bare-hash strings are read as
+    role=admin.
+  * RBAC is central and method-based: any POST/PUT/DELETE/PATCH from a
+    non-admin identity is refused 403 (RBAC_EXEMPT excepted). Identity comes
+    from the session cookie OR an API token (Authorization: Bearer /
+    X-API-Token); tokens store only a SHA-256, compared constant-time.
+"""
+import os
+import re
+import json
+import time
+import hmac
+import socket
+import hashlib
+import secrets
+import threading
+from datetime import datetime
+from flask import Blueprint, jsonify, request, session, g
+from werkzeug.security import generate_password_hash, check_password_hash
+
+from .config import APP_DIR, APP_VERSION, PLATFORM, write_json_atomic
+from .runcmd import run, err
+from . import registry
+from . import sso
+
+bp = Blueprint('auth', __name__)
+
+AUTH_FILE = os.environ.get('DASHBOARD_AUTH_FILE', os.path.join(APP_DIR, 'auth.json'))
+RE_USERNAME = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*\Z')
+MIN_PASSWORD_LEN = 8
+
+# Compared against when a username is unknown, so a missing user costs the
+# same time as a wrong password (no user enumeration via timing).
+_DUMMY_HASH = generate_password_hash('storage-dashboard-dummy')
+
+# In-memory brute-force throttle, keyed by client IP.
+_LOGIN_FAILS = {}
+LOCKOUT_MAX = 5
+LOCKOUT_WINDOW = 300  # seconds
+
+# Endpoints reachable without a session (BARE endpoint names — the blueprint
+# prefix is stripped before comparison). `metrics` is public so a Prometheus
+# scraper can reach it; it has its own optional token gate.
+PUBLIC_ENDPOINTS = {'api_login', 'api_me', 'index', 'static', 'metrics',
+                    'network_handoff', 'web_manifest', 'sso_callback',
+                    # the login screen is themed before anyone signs in
+                    'themes_list', 'theme_asset',
+                    # … and sits on the node's wallpaper (4.0.0)
+                    'wallpaper_list', 'wallpaper_asset'}
+
+# Mutating endpoints a non-admin (read-only) account is still allowed to call.
+RBAC_EXEMPT = {'api_logout', 'change_password'}
+
+TOKEN_PREFIX = 'sd_'
+
+
+# Every auth.json change is load -> mutate -> save. The server is threaded,
+# and write_json_atomic only guarantees the file is never torn — two threads
+# interleaving their load/save still lose one of the writes (a token's daily
+# last_used stamp racing an admin's user creation would silently drop the new
+# user). Re-entrant so a helper that takes it can be called from a route that
+# already holds it.
+_CFG_LOCK = threading.RLock()
+
+
+def load_config():
+    try:
+        with open(AUTH_FILE) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_config(cfg):
+    write_json_atomic(AUTH_FILE, cfg, 0o600)
+
+
+# A user record is {password, role, smb}. Legacy entries were a bare hash string
+# (a single admin) — treat those as role=admin for back-compat.
+def _users():
+    return load_config().get('users', {})
+
+def _user_hash(rec):
+    return rec if isinstance(rec, str) else (rec or {}).get('password', '')
+
+def _user_role(rec):
+    # A missing record (deleted user) must NOT default to admin — fail safe to
+    # the least-privileged role. The bare-string form is a legacy pre-role
+    # record and stays admin.
+    if isinstance(rec, str):
+        return 'admin'
+    return (rec or {}).get('role', 'readonly')
+
+def _count_admins(users):
+    return sum(1 for r in users.values() if _user_role(r) == 'admin')
+
+def _is_admin():
+    # Identity (session user or API token) is resolved in require_login.
+    return getattr(g, 'identity_role', None) == 'admin'
+
+
+# ─── API tokens (for automation; bearer auth, no session cookie) ───────
+
+def _tokens():
+    return load_config().get('tokens', [])
+
+
+def _hash_token(secret):
+    return hashlib.sha256(secret.encode()).hexdigest()
+
+
+def _bearer_token():
+    """Extract a presented API token from the request, if any."""
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer '):
+        return auth[7:].strip()
+    return (request.headers.get('X-API-Token') or '').strip()
+
+
+def _resolve_token(secret):
+    """Return the matching token record (constant-time compare), or None."""
+    if not secret or not secret.startswith(TOKEN_PREFIX):
+        return None
+    h = _hash_token(secret)
+    for rec in _tokens():
+        if hmac.compare_digest(rec.get('hash', ''), h):
+            return rec
+    return None
+
+
+def _touch_token(rec):
+    """Record last-used at day granularity (bounds writes to once/day/token)."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    if rec.get('last_used') == today:
+        return
+    with _CFG_LOCK:
+        cfg = load_config()
+        for t in cfg.get('tokens', []):
+            if t.get('id') == rec.get('id'):
+                t['last_used'] = today
+                save_config(cfg)
+                return
+
+
+def _resolve_identity():
+    """Resolve the caller to (name, role) from the session cookie or an API
+    token. Returns (None, None) if unauthenticated."""
+    user = session.get('user')
+    if user:
+        rec = _users().get(user)
+        # A session whose user no longer exists (deleted or renamed) is no
+        # longer valid — reject it instead of resolving a role for a missing
+        # record, which would otherwise promote the stale session.
+        if rec is None:
+            return None, None
+        return user, _user_role(rec)
+    rec = _resolve_token(_bearer_token())
+    if rec:
+        _touch_token(rec)
+        return 'token:' + rec.get('name', '?'), rec.get('role', 'readonly')
+    return None, None
+
+
+def ensure_bootstrap():
+    """Ensure a session secret and at least one user exist. Returns the config."""
+    with _CFG_LOCK:
+        return _ensure_bootstrap_locked()
+
+
+def _ensure_bootstrap_locked():
+    cfg = load_config()
+    changed = False
+    if not cfg.get('secret_key'):
+        cfg['secret_key'] = secrets.token_hex(32)
+        changed = True
+    if not cfg.get('users'):
+        pw = os.environ.get('DASHBOARD_ADMIN_PASSWORD')
+        generated = not pw
+        if not pw:
+            pw = secrets.token_urlsafe(12)
+        cfg.setdefault('users', {})['admin'] = {'password': generate_password_hash(pw),
+                                                'role': 'admin', 'smb': False,
+                                                'must_change': generated}
+        changed = True
+        if generated:
+            print('=' * 64, flush=True)
+            print('Nexus Dashboard: created initial admin account', flush=True)
+            print('  username: admin', flush=True)
+            print(f'  password: {pw}', flush=True)
+            print('  Change it from the UI, or: python app.py set-password admin', flush=True)
+            print('=' * 64, flush=True)
+    if changed:
+        save_config(cfg)
+    return cfg
+
+
+def _bare_endpoint(endpoint):
+    """Blueprint routes get 'bp.func' endpoint names; the public/RBAC sets use
+    bare function names so they stay stable across the package refactor."""
+    return (endpoint or '').rsplit('.', 1)[-1]
+
+
+def require_login():
+    """App-wide before_request guard (registered by create_app)."""
+    if _bare_endpoint(request.endpoint) in PUBLIC_ENDPOINTS:
+        return None
+    name, role = _resolve_identity()
+    if not name:
+        return jsonify({'success': False, 'error': 'Authentication required'}), 401
+    g.identity_name = name
+    g.identity_role = role
+    # Hard module disable, runtime layer: a toggled-off module's routes may
+    # still exist until the next restart (Flask can't unregister) — refuse them
+    # here so the toggle takes effect immediately. Core endpoints (service
+    # management, status, auth, …) map to no module and are never gated.
+    mid = registry.module_for_endpoint(request.endpoint)
+    if mid and mid in registry.load_disabled_modules():
+        return jsonify({'success': False,
+                        'error': f"module '{mid}' is disabled on this node"}), 403
+    # Role check: read-only identities may view (GET) but not change anything.
+    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH') and \
+            _bare_endpoint(request.endpoint) not in RBAC_EXEMPT:
+        if role != 'admin':
+            return jsonify({'success': False, 'error': 'Read-only account: action not permitted'}), 403
+    return None
+
+
+# ─── Routes ────────────────────────────────────────────────────────────
+
+@bp.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json(silent=True) or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    ip = request.remote_addr or '?'
+    g.audit_user = username or '-'  # attribute the attempt even if it fails
+
+    cnt, first = _LOGIN_FAILS.get(ip, (0, 0))
+    now = time.time()
+    if now - first > LOCKOUT_WINDOW:
+        cnt, first = 0, now
+    if cnt >= LOCKOUT_MAX:
+        return jsonify({'success': False, 'error': 'Too many attempts; try again later'}), 429
+
+    rec = load_config().get('users', {}).get(username)
+    if rec and check_password_hash(_user_hash(rec), password):
+        _LOGIN_FAILS.pop(ip, None)
+        session.clear()
+        session['user'] = username
+        session.permanent = True
+        return jsonify({'success': True, 'user': username, 'role': _user_role(rec),
+                        'must_change': bool(isinstance(rec, dict) and rec.get('must_change')),
+                        'fqdn': socket.getfqdn()})
+
+    # Dummy hash ONLY for an unknown user: a wrong password on a real account
+    # already ran one real hash above, so both paths now cost exactly one hash
+    # and the response time no longer reveals whether the username exists.
+    if not rec:
+        check_password_hash(_DUMMY_HASH, password)
+    _LOGIN_FAILS[ip] = (cnt + 1, first or now)
+    return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+
+@bp.route('/api/logout', methods=['POST'])
+def api_logout():
+    session.clear()
+    return jsonify({'success': True})
+
+
+@bp.route('/api/me')
+def api_me():
+    # Resolve via session cookie OR API token so a cluster controller can probe
+    # a node with its bearer token (Test-connection at enroll). api_me is a
+    # PUBLIC_ENDPOINT, so it must resolve identity itself (require_login, which
+    # sets g.identity_*, is skipped for public endpoints).
+    name, role = _resolve_identity()
+    if not name:
+        # The login screen needs to know whether to offer SSO before anyone is
+        # authenticated, so the hint rides on the 401 too.
+        body = {'authenticated': False}
+        if sso.enabled():
+            body['sso'] = sso.login_hint()
+        return jsonify(body), 401
+    # Token identities ('token:<name>') have no user record / must_change flag.
+    rec = _users().get(name) if not str(name).startswith('token:') else None
+    body = {'authenticated': True, 'user': name, 'role': role,
+            'must_change': bool(isinstance(rec, dict) and rec.get('must_change')),
+            'fqdn': socket.getfqdn(),
+            'version': APP_VERSION,
+            'capabilities': registry._enabled_module_ids()}
+    # Added ONLY when SSO is configured: with it off the response stays
+    # byte-identical to a node without this feature (tests/goldens/api_me.json).
+    if sso.enabled():
+        body['sso'] = sso.login_hint()
+    return jsonify(body)
+
+
+@bp.route('/api/sso')
+def sso_status():
+    """What this node's SSO configuration is, and whether the UI may change it."""
+    cfg = sso.config()
+    return jsonify({'success': True, 'configured': bool(cfg),
+                    'locked': sso.locked(),
+                    'source': (cfg or {}).get('source'),
+                    'issuer': (cfg or {}).get('issuer', ''),
+                    'audience': (cfg or {}).get('audience', ''),
+                    'kid': (cfg or {}).get('kid', '')})
+
+
+@bp.route('/api/sso/enroll', methods=['POST'])
+def sso_enroll():
+    """Redeem a one-time enrollment code at an issuer and store the result.
+
+    Requires admin here AND a code minted by an admin at the issuer — neither
+    side can enroll the other unilaterally. Refused outright when the host
+    configuration already fixes this (env vars win), so a UI admin can never
+    silently override what the installer decided.
+    """
+    if sso.locked():
+        return jsonify({'success': False,
+                        'error': 'Single sign-on is fixed by this host\'s '
+                                 'configuration and cannot be changed here'}), 409
+    data = request.get_json(silent=True) or {}
+    issuer = (data.get('issuer') or '').strip().rstrip('/')
+    code = (data.get('code') or '').strip()
+    if not issuer.startswith(('http://', 'https://')):
+        return jsonify({'success': False,
+                        'error': 'Issuer must be an http:// or https:// URL'}), 400
+    if not code:
+        return jsonify({'success': False, 'error': 'Enrollment code is required'}), 400
+
+    result, e = sso.redeem(issuer, code)
+    if e:
+        return jsonify({'success': False, 'error': e}), 400
+    sso.save_stored(result['issuer'], result['key'], result.get('kid', ''),
+                    result['audience'])
+    g.audit_user = getattr(g, 'identity_name', None) or g.get('audit_user')
+    return jsonify({'success': True, 'issuer': result['issuer'],
+                    'audience': result['audience'], 'kid': result.get('kid', '')})
+
+
+@bp.route('/api/sso', methods=['DELETE'])
+def sso_disable():
+    """Remove a UI-enrolled configuration. The current password is required —
+    turning off the way you sign in should not be a single click, and it stops
+    a hijacked session quietly detaching the node from the issuer."""
+    if sso.locked():
+        return jsonify({'success': False,
+                        'error': 'Single sign-on is fixed by this host\'s '
+                                 'configuration and cannot be changed here'}), 409
+    data = request.get_json(silent=True) or {}
+    name = getattr(g, 'identity_name', '')
+    rec = _users().get(name)
+    if not rec or not check_password_hash(_user_hash(rec), data.get('password') or ''):
+        return jsonify({'success': False, 'error': 'Current password is incorrect'}), 403
+    sso.clear_stored()
+    return jsonify({'success': True})
+
+
+def sso_callback():
+    """Exchange a signed SSO assertion for an ordinary local session.
+
+    This is the ONLY place an assertion is accepted. Everything downstream —
+    require_login, RBAC, audit, the module gate — sees a normal session and
+    cannot tell how it was created, which is exactly the point.
+    """
+    from flask import redirect
+    # Registered unconditionally so a UI enrollment takes effect immediately —
+    # Flask cannot add a route to a running app, and the module system already
+    # solves this the same way (all blueprints register; the gate is at
+    # runtime). Unconfigured, it behaves as if it were not there.
+    if not sso.enabled():
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    sub = sso.verify(request.args.get('a'))
+    dest = sso.safe_next(request.args.get('next'))
+    if not sub:
+        return redirect('/?sso_error=1', code=302)
+    # The account must already exist here. An assertion is proof of WHO the
+    # caller is, never authority to create them or to pick their role.
+    rec = _users().get(sub)
+    if rec is None:
+        return redirect('/?sso_error=unknown_user', code=302)
+    session.clear()          # session fixation: never reuse a pre-login id
+    session['user'] = sub
+    session.permanent = True
+    g.audit_user = sub
+    return redirect(dest, code=302)
+
+
+bp.add_url_rule('/sso/callback', 'sso_callback', sso_callback)
+
+
+@bp.route('/api/version')
+def api_version():
+    """Dashboard version + identity, for controller version-skew detection.
+    Authenticated (not public) — a node only reveals its version to a caller
+    holding a valid session or token."""
+    return jsonify({'version': APP_VERSION, 'fqdn': socket.getfqdn(),
+                    'os': PLATFORM['pretty']})
+
+
+@bp.route('/api/account/password', methods=['POST'])
+def change_password():
+    data = request.get_json() or {}
+    old = data.get('old_password') or ''
+    new = data.get('new_password') or ''
+    user = session.get('user')  # session-only; not applicable to API tokens
+    if not user:
+        return err('Only an interactive session can change a password', 401)
+    if len(new) < MIN_PASSWORD_LEN:
+        return err(f'New password must be at least {MIN_PASSWORD_LEN} characters')
+    with _CFG_LOCK:
+        cfg = load_config()
+        rec = cfg.get('users', {}).get(user)
+        if not rec or not check_password_hash(_user_hash(rec), old):
+            return err('Current password is incorrect')
+        if isinstance(rec, str):
+            rec = {'password': '', 'role': 'admin', 'smb': False}
+        rec['password'] = generate_password_hash(new)
+        rec.pop('must_change', None)  # first-run forced change satisfied
+        cfg['users'][user] = rec
+        save_config(cfg)
+    return jsonify({'success': True})
+
+
+# ─── Dashboard user management (admin only) ──────────────────────────
+
+@bp.route('/api/users')
+def users_list():
+    if not _is_admin():
+        return err('Administrator access required', 403)
+    return jsonify([{'username': n, 'role': _user_role(r),
+                     'smb': bool(r.get('smb')) if isinstance(r, dict) else False}
+                    for n, r in _users().items()])
+
+
+@bp.route('/api/users', methods=['POST'])
+def users_create():
+    if not _is_admin():
+        return err('Administrator access required', 403)
+    data = request.get_json() or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    role = data.get('role', 'readonly')
+    smb = bool(data.get('smb'))
+    if not RE_USERNAME.match(username):
+        return err('Invalid username')
+    if role not in ('admin', 'readonly'):
+        return err('Invalid role')
+    if not password:
+        return err('Password required')
+    with _CFG_LOCK:
+        cfg = load_config()
+        users = cfg.setdefault('users', {})
+        # Create means create. Overwriting an existing record here would reset
+        # its password AND role in one unguarded step — including demoting the
+        # last administrator, which users_set_role refuses.
+        if username in users:
+            return err('User %s already exists — set its password or role instead'
+                       % username, 409)
+        users[username] = {'password': generate_password_hash(password),
+                           'role': role, 'smb': smb}
+        save_config(cfg)
+    if smb:  # mirror to a Samba account with the same name/password
+        run(['useradd', '-M', '-s', '/usr/sbin/nologin', username])
+        run(['smbpasswd', '-a', '-s', username], input_data=f'{password}\n{password}\n')
+    return jsonify({'success': True})
+
+
+@bp.route('/api/users/<username>/role', methods=['POST'])
+def users_set_role(username):
+    if not _is_admin():
+        return err('Administrator access required', 403)
+    role = (request.get_json() or {}).get('role')
+    if role not in ('admin', 'readonly'):
+        return err('Invalid role')
+    with _CFG_LOCK:
+        cfg = load_config()
+        users = cfg.get('users', {})
+        if username not in users:
+            return err('No such user', 404)
+        if role != 'admin' and _user_role(users[username]) == 'admin' and _count_admins(users) <= 1:
+            return err('Cannot demote the last administrator', 409)
+        rec = users[username] if isinstance(users[username], dict) else {'password': users[username], 'smb': False}
+        rec['role'] = role
+        users[username] = rec
+        save_config(cfg)
+    return jsonify({'success': True})
+
+
+@bp.route('/api/users/<username>/password', methods=['POST'])
+def users_set_password(username):
+    if not _is_admin():
+        return err('Administrator access required', 403)
+    password = (request.get_json() or {}).get('password') or ''
+    if not password:
+        return err('Password required')
+    with _CFG_LOCK:
+        cfg = load_config()
+        users = cfg.get('users', {})
+        if username not in users:
+            return err('No such user', 404)
+        rec = users[username] if isinstance(users[username], dict) else {'role': 'admin', 'smb': False}
+        rec['password'] = generate_password_hash(password)
+        users[username] = rec
+        save_config(cfg)
+    if rec.get('smb'):
+        run(['smbpasswd', '-s', username], input_data=f'{password}\n{password}\n')
+    return jsonify({'success': True})
+
+
+@bp.route('/api/users/<username>', methods=['DELETE'])
+def users_delete(username):
+    if not _is_admin():
+        return err('Administrator access required', 403)
+    with _CFG_LOCK:
+        cfg = load_config()
+        users = cfg.get('users', {})
+        if username not in users:
+            return err('No such user', 404)
+        if username == session.get('user'):
+            return err('Cannot delete your own account', 409)
+        if _user_role(users[username]) == 'admin' and _count_admins(users) <= 1:
+            return err('Cannot delete the last administrator', 409)
+        was_smb = isinstance(users[username], dict) and users[username].get('smb')
+        del users[username]
+        save_config(cfg)
+    if was_smb:
+        run(['smbpasswd', '-x', username])
+    return jsonify({'success': True})
+
+
+# ─── API token management (admin only) ───────────────────────────────
+
+@bp.route('/api/tokens')
+def tokens_list():
+    if not _is_admin():
+        return err('Administrator access required', 403)
+    return jsonify([{'id': t['id'], 'name': t.get('name', ''), 'role': t.get('role', 'readonly'),
+                     'created': t.get('created', ''), 'last_used': t.get('last_used', '')}
+                    for t in _tokens()])
+
+
+@bp.route('/api/tokens', methods=['POST'])
+def tokens_create():
+    if not _is_admin():
+        return err('Administrator access required', 403)
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    role = data.get('role', 'readonly')
+    if not RE_USERNAME.match(name):
+        return err('Invalid token name')
+    if role not in ('admin', 'readonly'):
+        return err('Invalid role')
+    secret = TOKEN_PREFIX + secrets.token_urlsafe(32)
+    rec = {'id': 'tok-' + secrets.token_hex(6), 'name': name, 'role': role,
+           'hash': _hash_token(secret), 'created': datetime.now().strftime('%Y-%m-%d'),
+           'last_used': ''}
+    with _CFG_LOCK:
+        cfg = load_config()
+        cfg.setdefault('tokens', []).append(rec)
+        save_config(cfg)
+    # The secret is returned exactly once — only its SHA-256 is stored.
+    return jsonify({'success': True, 'id': rec['id'], 'name': name, 'role': role, 'token': secret})
+
+
+@bp.route('/api/tokens/<tid>', methods=['DELETE'])
+def tokens_delete(tid):
+    if not _is_admin():
+        return err('Administrator access required', 403)
+    with _CFG_LOCK:
+        cfg = load_config()
+        before = len(cfg.get('tokens', []))
+        cfg['tokens'] = [t for t in cfg.get('tokens', []) if t.get('id') != tid]
+        if len(cfg.get('tokens', [])) == before:
+            return err('No such token', 404)
+        save_config(cfg)
+    return jsonify({'success': True})

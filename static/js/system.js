@@ -1,0 +1,1059 @@
+async function page_tasks() {
+  const r = await API.get('/api/tasks');
+  const rows = (r.tasks || []).map(t => {
+    const armed = t.timer_active
+      ? '<span class="status-badge green">armed</span>'
+      : '<span class="status-badge gray">off</span>';
+    const res = t.running ? '<span class="status-badge">running…</span>'
+      : t.last_run == null ? '<span class="status-badge gray">never run</span>'
+      : t.ok ? '<span class="status-badge green">ok</span>'
+      : `<span class="status-badge red">failed (${escapeHtml(t.last_result)})</span>`;
+    return `<tr>
+      <td><strong>${escapeHtml(t.label)}</strong><div class="card-sub">${escapeHtml(t.desc)}</div></td>
+      <td>${armed}</td>
+      <td>${res}</td>
+      <td>${fmtTs(t.last_run)}</td>
+      <td>${t.timer_active ? fmtTs(t.next_run) : '-'}</td>
+      <td><button class="btn btn-sm" onclick="taskRun('${jsArg(t.id)}')">Run now</button></td>
+    </tr>`;
+  }).join('');
+  $('page-content').innerHTML = `
+    <h2>Scheduled Tasks</h2>
+    <p class="help">systemd timers the dashboard manages. Each is <em>armed</em> only when its
+      feature is configured; a disarmed task never runs. <strong>Run now</strong> triggers the job
+      immediately (independent of its schedule).</p>
+    <table class="table">
+      <thead><tr><th>Task</th><th>Timer</th><th>Last result</th><th>Last run</th><th>Next run</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function page_logs() {
+  const r = await API.get('/api/logs/sources');
+  const opts = (r.sources || []).map(s =>
+    `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)} — ${escapeHtml(s.unit)}</option>`).join('');
+  const prios = [['', 'All'], ['3', 'Error+'], ['4', 'Warning+'], ['6', 'Info+']]
+    .map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  $('page-content').innerHTML = `
+    <h2>Logs</h2>
+    <p class="help">journald entries for dashboard-managed units. Read-only.</p>
+    <div class="toolbar">
+      <select id="log-source" class="form-control" style="max-width:360px">${opts}</select>
+      <select id="log-priority" class="form-control" style="max-width:130px">${prios}</select>
+      <select id="log-lines" class="form-control" style="max-width:110px">
+        <option value="100">100</option><option value="200" selected>200</option>
+        <option value="500">500</option><option value="1000">1000</option>
+      </select>
+      <input id="log-grep" class="form-control" style="max-width:220px" placeholder="filter text (optional)" autocomplete="off">
+      <button class="btn btn-sm" onclick="logsRefresh()">Refresh</button>
+    </div>
+    <pre id="log-output" class="log-view">Select a source and press Refresh.</pre>`;
+  const g = $('log-grep');
+  if (g) g.addEventListener('keydown', e => { if (e.key === 'Enter') logsRefresh(); });
+  logsRefresh();
+}
+
+async function page_services() {
+  // The install column is decoration — never let its fetch sink the page.
+  const [status, install] = await Promise.all([
+    API.get('/api/status'),
+    API.get('/api/install/status').catch(() => null)
+  ]);
+  // A service whose module is toggled off on the Modules page is intentional —
+  // hide its row and keep it out of the "not installed" nag.
+  let rows = Object.entries(status).filter(([, v]) => !v.module_disabled).map(([k, v]) => `
+    <tr>
+      <td>${escapeHtml(v.name)}</td>
+      <td>${install ? escapeHtml(install[k]?.package || '-') : '-'}</td>
+      <td>${install ? `<span class="status-badge ${install[k]?.installed ? 'green' : 'red'}">${install[k]?.installed ? 'Installed' : 'Missing'}</span>` : '-'}</td>
+      <td><span class="status-badge ${v.active === 'active' ? 'green' : v.active === 'inactive' ? 'yellow' : 'red'}">${v.active}</span></td>
+      <td><span class="status-badge ${v.enabled === 'enabled' ? 'green' : 'gray'}">${v.enabled}</span></td>
+      <td>
+        <button class="btn btn-sm" onclick="svcAction('${k}','start')">Start</button>
+        <button class="btn btn-sm btn-warning" onclick="svcAction('${k}','stop')">Stop</button>
+        <button class="btn btn-sm" onclick="svcAction('${k}','restart')">Restart</button>
+        <button class="btn btn-sm btn-outline" onclick="svcAction('${k}','enable')">Enable</button>
+        <button class="btn btn-sm btn-outline" onclick="svcAction('${k}','disable')">Disable</button>
+        <button class="btn btn-sm btn-outline" onclick="svcLogs('${k}')">Logs</button>
+      </td>
+    </tr>
+  `).join('');
+  let missing = install ? Object.entries(install).filter(([,v]) => !v.installed && !v.module_disabled).length : 0;
+  $('page-content').innerHTML = `
+    <h2>Service Manager</h2>
+    ${missing > 0 ? `<div class="alert alert-warning">${missing} service(s) not installed. Run <code>sudo ./install-prerequisites.sh</code> on the host to install them.</div>` : ''}
+    <table class="table">
+      <thead><tr><th>Service</th><th>Package</th><th>Installed</th><th>Status</th><th>Boot</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+// "My Account": change your own password — available to every user (incl.
+// read-only), which is why it's separate from the admin-only Users page.
+async function page_account() {
+  $('page-content').innerHTML = `
+    <h2>My Account</h2>
+    <p>Signed in as <strong>${escapeHtml(currentUser || 'admin')}</strong> (${escapeHtml(currentRole)}).</p>
+    <button class="btn" onclick="changePassword()">Change My Password</button>
+    <h3>Appearance</h3>
+    <div id="appearance"></div>`;
+  await renderAppearance();
+}
+
+// Theme picker (every user; stored in this browser) + the node default (admin;
+// stored on the node, followed by browsers that never picked). The catalog
+// comes from the loader in themes.js. Nothing applies until Apply / Save is
+// pressed, and each confirms what it did — a picker that silently applied on
+// change left the operator unsure anything had happened.
+async function renderAppearance(msg, nodeMsg) {
+  const box = $('appearance');
+  if (!box) return;
+  if (!themeCatalog) await themesRefresh();
+  const themes = (themeCatalog && themeCatalog.themes) || [];
+  const cur = themeCurrent || themes[0] || { id: 'nexus', modes: ['dark', 'light'], variants: [] };
+  const mine = themeUserChoice();
+  const light = document.documentElement.classList.contains('theme-light');
+  const opt = (t, sel) => `<option value="${escapeHtml(t.id)}" ${sel === t.id ? 'selected' : ''} ${t.error ? 'disabled' : ''}>` +
+    `${escapeHtml(t.name)}${t.source === 'drop-in' ? ' · drop-in' : ''}${t.error ? ' · load failed' : ''}</option>`;
+  const broken = themes.filter(t => t.error);
+  const d = (themeCatalog && themeCatalog.default) || { theme: 'nexus' };
+  const dt = themes.find(t => t.id === d.theme) || cur;
+  const label = (t, v) => escapeHtml(t.name) + (v && (t.variants || []).length ? ` (${escapeHtml(((t.variants || []).find(x => x.id === v) || {}).label || v)})` : '');
+  box.innerHTML = `
+    <div style="max-width:420px">
+      <div class="form-group"><label>Theme</label>
+        <select class="form-control" id="ap-theme" onchange="appearanceThemeChanged()">${themes.map(t => opt(t, cur.id)).join('')}</select></div>
+      <div id="ap-variant-wrap">${appearanceVariantSelect(cur, themeCurrentVariant)}</div>
+      <div class="form-group"><label>Mode</label>
+        <div class="checklist" id="ap-modes" style="max-height:none">${appearanceModeRadios(cur, light)}</div></div>
+      <label class="checkitem" style="max-width:420px"><input type="checkbox" id="ap-follow" ${mine ? '' : 'checked'}>
+        Follow this node's default (currently ${label(dt, d.variant)})</label>
+      <div class="toolbar" style="margin-top:12px"><button class="btn" onclick="appearanceApply()">Apply theme</button></div>
+      ${msg ? `<div class="health-ok" id="ap-msg">✓ ${msg}</div>` : ''}
+      <p class="help">Now showing <strong>${label(cur, themeCurrentVariant)}</strong>, ${light ? 'light' : 'dark'} mode${mine ? ' (your choice for this browser)' : ' (this node\'s default)'}.
+        ${cur.description ? escapeHtml(cur.description) + ' ' : ''}Theme and mode are stored in this browser only — each browser keeps its own choice.</p>
+      ${broken.length ? `<div class="alert alert-warning"><strong>Not loaded:</strong> ${broken.map(t => `${escapeHtml(t.id)} — ${escapeHtml(t.error)}`).join(' · ')}</div>` : ''}
+    </div>
+    ${currentRole === 'admin' ? `
+    <h3>Node default</h3>
+    <div style="max-width:420px">
+      <div class="form-group"><label>Theme for browsers that have not chosen</label>
+        <select class="form-control" id="ap-node-theme" onchange="appearanceNodeThemeChanged()">${themes.map(t => opt(t, d.theme)).join('')}</select></div>
+      <div id="ap-node-variant">${nodeVariantSelect(dt, d.variant)}</div>
+      <div class="toolbar"><button class="btn" onclick="appearanceSaveNode()">Save node default</button></div>
+      ${nodeMsg ? `<div class="health-ok" id="ap-node-msg">✓ ${nodeMsg}</div>` : ''}
+      <p class="help">Drop-in themes are read from <code>${escapeHtml((themeCatalog && themeCatalog.drop_in_dir) || 'themes/')}</code> — one directory per theme, installed over SSH (see THEMES.md).</p>
+    </div>` : ''}`;
+}
+function appearanceVariantSelect(t, sel) {
+  if (!t || !(t.variants || []).length) return '';
+  return `<div class="form-group"><label>${escapeHtml(t.variant_label || 'Variant')}</label>
+    <select class="form-control" id="ap-variant">${t.variants.map(v =>
+      `<option value="${escapeHtml(v.id)}" ${v.id === (sel || t.default_variant) ? 'selected' : ''}>${escapeHtml(v.label)}</option>`).join('')}</select></div>`;
+}
+function appearanceModeRadios(t, light) {
+  const modes = (t && t.modes) || ['dark', 'light'];
+  const one = (m, label) => `<label class="checkitem"><input type="radio" name="ap-mode" value="${m}"
+      ${(m === 'light') === light ? 'checked' : ''} ${modes.includes(m) ? '' : 'disabled'}> ${label}${modes.includes(m) ? '' : ' (not offered by this theme)'}</label>`;
+  return one('dark', 'Dark') + one('light', 'Light');
+}
+function nodeVariantSelect(t, sel) {
+  if (!t || !(t.variants || []).length) return '';
+  return `<div class="form-group"><label>${escapeHtml(t.variant_label || 'Variant')}</label>
+    <select class="form-control" id="ap-node-variant-sel">${t.variants.map(v =>
+      `<option value="${escapeHtml(v.id)}" ${v.id === (sel || t.default_variant) ? 'selected' : ''}>${escapeHtml(v.label)}</option>`).join('')}</select></div>`;
+}
+// Changing the theme in the picker only re-fits the variant and mode controls
+// to that theme; nothing is applied until the button.
+function appearanceThemeChanged() {
+  const t = themeEntry($('ap-theme').value);
+  const light = (document.querySelector('input[name="ap-mode"]:checked') || {}).value === 'light';
+  $('ap-variant-wrap').innerHTML = appearanceVariantSelect(t, null);
+  $('ap-modes').innerHTML = appearanceModeRadios(t, light && (t.modes || []).includes('light'));
+  const f = $('ap-follow'); if (f) f.checked = false;
+}
+function appearanceApply() {
+  const follow = $('ap-follow') && $('ap-follow').checked;
+  const mode = (document.querySelector('input[name="ap-mode"]:checked') || {}).value || 'dark';
+  if (follow) themeFollowNode();
+  else themeSelectUser($('ap-theme').value, $('ap-variant') ? $('ap-variant').value : null);
+  setThemeMode(mode);
+  const t = themeCurrent || {};
+  const v = (t.variants || []).find(x => x.id === themeCurrentVariant);
+  const shown = `${t.name || t.id}${v ? ' (' + v.label + ')' : ''}, ${document.documentElement.classList.contains('theme-light') ? 'light' : 'dark'} mode`;
+  renderAppearance(follow ? `Following this node's default: ${escapeHtml(shown)}.` : `Applied ${escapeHtml(shown)} — saved in this browser.`);
+}
+function appearanceNodeThemeChanged() {
+  const t = themeEntry($('ap-node-theme').value);
+  $('ap-node-variant').innerHTML = nodeVariantSelect(t, null);
+}
+async function appearanceSaveNode() {
+  const body = { theme: $('ap-node-theme').value };
+  const vs = $('ap-node-variant-sel');
+  if (vs) body.variant = vs.value;
+  let r;
+  try { r = await API.post('/api/themes/default', body); } catch (e) { alert(e.message); return; }
+  await themesRefresh();
+  const t = themeEntry(r.default.theme) || {};
+  const v = (t.variants || []).find(x => x.id === r.default.variant);
+  renderAppearance(null, `Saved. Browsers that have not chosen a theme now get ${escapeHtml(t.name || r.default.theme)}${v ? ' (' + escapeHtml(v.label) + ')' : ''}.`);
+}
+
+// "Users & Tokens": manage dashboard accounts and API tokens (admin only).
+async function page_users() {
+  if (currentRole !== 'admin') return adminOnlyPage('Users & Tokens');
+  let users = [];
+  try { users = await API.get('/api/users'); } catch(e) {}
+  const urows = users.map(u => `<tr>
+      <td>${escapeHtml(u.username)}</td>
+      <td><span class="status-badge ${u.role === 'admin' ? 'green' : 'gray'}">${u.role}</span></td>
+      <td>${u.smb ? '<span class="status-badge gray">SMB</span>' : '—'}</td>
+      <td>
+        <button class="btn btn-sm" onclick="userSetRole('${jsArg(u.username)}','${u.role === 'admin' ? 'readonly' : 'admin'}')">Make ${u.role === 'admin' ? 'read-only' : 'admin'}</button>
+        <button class="btn btn-sm" onclick="userPassword('${jsArg(u.username)}')">Password</button>
+        <button class="btn btn-sm btn-danger" onclick="userDelete('${jsArg(u.username)}')">Delete</button>
+      </td>
+    </tr>`).join('');
+  let tokens = [];
+  try { tokens = await API.get('/api/tokens'); } catch(e) {}
+  const trows = tokens.map(t => `<tr>
+      <td>${escapeHtml(t.name)}</td>
+      <td><span class="status-badge ${t.role === 'admin' ? 'green' : 'gray'}">${t.role}</span></td>
+      <td>${escapeHtml(t.created || '—')}</td>
+      <td>${escapeHtml(t.last_used || 'never')}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="tokenDelete('${jsArg(t.id)}','${jsArg(t.name)}')">Revoke</button></td>
+    </tr>`).join('');
+  $('page-content').innerHTML = `
+    <h2>Users &amp; Tokens</h2>
+    <h3>Dashboard Users</h3>
+    <div class="toolbar"><button class="btn" onclick="userCreate()">+ New User</button></div>
+    <table class="table">
+      <thead><tr><th>Username</th><th>Role</th><th>SMB</th><th>Actions</th></tr></thead>
+      <tbody>${urows || '<tr><td colspan="4">No users</td></tr>'}</tbody>
+    </table>
+    <p class="help">Administrators can do anything; read-only users can view but not change. "SMB user" also
+      creates a matching Samba account for file sharing.</p>
+    <h3 style="margin-top:24px">API Tokens</h3>
+    <div class="toolbar"><button class="btn" onclick="tokenCreate()">+ New Token</button></div>
+    <table class="table">
+      <thead><tr><th>Name</th><th>Role</th><th>Created</th><th>Last used</th><th>Actions</th></tr></thead>
+      <tbody>${trows || '<tr><td colspan="5">No API tokens</td></tr>'}</tbody>
+    </table>
+    <p class="help">For automation/scripts. Send the token as <code>Authorization: Bearer &lt;token&gt;</code>
+      (or <code>X-API-Token</code>). A token carries a role (admin or read-only) and is shown only once at creation.</p>
+    <h3 style="margin-top:24px">Single Sign-On</h3>
+    <div id="sso-section"><p class="help">Loading…</p></div>`;
+  renderSso();
+}
+
+// Single sign-on enrollment. Deliberately here rather than on My Account: it
+// is a node-wide identity decision, not a personal preference.
+async function renderSso() {
+  const el = $('sso-section');
+  if (!el) return;
+  let s = {};
+  try { s = await API.get('/api/sso'); } catch (e) {
+    el.innerHTML = '<p class="help">Unavailable.</p>';
+    return;
+  }
+  if (s.locked) {
+    el.innerHTML = `
+      <p>Signing in through <strong>${escapeHtml(s.issuer)}</strong> as
+         <code>${escapeHtml(s.audience)}</code>.</p>
+      <p class="help">Fixed by this host's configuration
+        (<code>/etc/nexus-dashboard.env</code>), so it cannot be changed from here.
+        Edit that file and restart the service to change or remove it.</p>`;
+    return;
+  }
+  if (s.configured) {
+    el.innerHTML = `
+      <p>Signing in through <strong>${escapeHtml(s.issuer)}</strong> as
+         <code>${escapeHtml(s.audience)}</code>.</p>
+      <p class="help">Enrolled from this page. People with an account
+        <em>on this node</em> can sign in via the issuer; it never creates
+        accounts here.</p>
+      <button class="btn btn-danger" onclick="ssoDisable()">Stop using single sign-on</button>`;
+    return;
+  }
+  el.innerHTML = `
+    <p class="help">Enroll this node with a Nexus SSO issuer so people can sign
+      in once and reach it without a second password. Generate a one-time code
+      in the issuer's own UI, then paste it here.</p>
+    <div class="form-group"><label>Issuer URL</label>
+      <input id="sso-issuer" class="form-control" placeholder="https://sso.example.com"></div>
+    <div class="form-group"><label>Enrollment code</label>
+      <input id="sso-code" class="form-control" placeholder="nxe_…" autocomplete="off"></div>
+    <button class="btn" onclick="ssoEnroll()">Enroll</button>
+    <p class="help">The code works once. Signing in here with a password keeps
+      working either way.</p>`;
+}
+
+async function ssoEnroll() {
+  const issuer = ($('sso-issuer').value || '').trim();
+  const code = ($('sso-code').value || '').trim();
+  if (!issuer || !code) { alert('Issuer URL and enrollment code are both required.'); return; }
+  try {
+    const r = await API.post('/api/sso/enroll', { issuer, code });
+    alert(`Enrolled with ${r.issuer} as "${r.audience}".`);
+    page_users();
+  } catch (err) { alert(err.message); }
+}
+
+async function ssoDisable() {
+  const password = prompt('Confirm your current password to stop using single sign-on:');
+  if (!password) return;
+  // Raw fetch: the shared API.delete helper sends no body, and this one has to
+  // carry the password confirmation.
+  try {
+    const r = await fetch('/api/sso', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.success) throw new Error(j.error || 'Could not remove');
+    alert('Single sign-on removed. Password sign-in is unaffected.');
+    page_users();
+  } catch (err) { alert(err.message); }
+}
+
+async function page_notifications() {
+  if (currentRole !== 'admin') return adminOnlyPage('Notifications');
+  let n = { email: {}, webhook: {}, active_alerts: {} };
+  try { n = await API.get('/api/notifications'); } catch(e) {}
+  const em = n.email || {}, wb = n.webhook || {};
+  const active = Object.values(n.active_alerts || {});
+  $('page-content').innerHTML = `
+    <h2>Notifications</h2>
+    ${active.length ? `<div class="alert alert-warning"><strong>Active alerts:</strong> ${active.map(escapeHtml).join(' · ')}</div>`
+                    : '<div class="health-ok">✓ No active alerts</div>'}
+    <div class="form-group"><label><input type="checkbox" id="nf-email-en" ${em.enabled ? 'checked' : ''}> Email (SMTP)</label></div>
+    <div class="form-group" style="display:flex;gap:8px">
+      <div style="flex:2"><label>SMTP host</label><input id="nf-host" class="form-control" value="${escapeHtml(em.host || '')}"></div>
+      <div style="flex:1"><label>Port</label><input id="nf-port" class="form-control" value="${escapeHtml(em.port || 587)}"></div>
+      <div style="flex:1"><label>Security</label><select id="nf-sec" class="form-control">
+        <option value="starttls" ${em.security === 'starttls' ? 'selected' : ''}>STARTTLS</option>
+        <option value="ssl" ${em.security === 'ssl' ? 'selected' : ''}>SSL/TLS</option>
+        <option value="none" ${em.security === 'none' ? 'selected' : ''}>None</option></select></div>
+    </div>
+    <div class="form-group" style="display:flex;gap:8px">
+      <div style="flex:1"><label>Username</label><input id="nf-user" class="form-control" autocomplete="off" value="${escapeHtml(em.username || '')}"></div>
+      <div style="flex:1"><label>Password</label><input id="nf-pass" type="password" class="form-control" autocomplete="new-password" value="${em.password ? escapeHtml(em.password) : ''}" placeholder="(unchanged)"></div>
+    </div>
+    <div class="form-group" style="display:flex;gap:8px">
+      <div style="flex:1"><label>From</label><input id="nf-from" class="form-control" value="${escapeHtml(em.from || '')}" placeholder="alerts@example.com"></div>
+      <div style="flex:1"><label>To</label><input id="nf-to" class="form-control" value="${escapeHtml(em.to || '')}" placeholder="me@example.com"></div>
+    </div>
+    <div class="form-group"><label><input type="checkbox" id="nf-web-en" ${wb.enabled ? 'checked' : ''}> Webhook (HTTP POST JSON)</label></div>
+    <div class="form-group"><label>Webhook URL</label><input id="nf-url" class="form-control" value="${escapeHtml(wb.url || '')}" placeholder="https://hooks.example.com/..."></div>
+    <div class="toolbar"><button class="btn" onclick="notifSave()">Save</button>
+      <button class="btn btn-outline" onclick="notifTest()">Send Test (saved config)</button></div>
+    <div id="nf-result" class="help"></div>
+    <p class="help">Alerts: degraded/faulted pool, pool ≥90% full, a stopped service, a SMART failure — sent once per
+      condition (re-checked every 15 min, with a "resolved" notice when it clears). Enabling a channel turns on the background check.</p>`;
+}
+
+async function page_certificate() {
+  if (currentRole !== 'admin') return adminOnlyPage('Certificate');
+  const tls = await API.get('/api/tls/info');
+  const badge = tls.self_signed
+    ? '<span class="status-badge yellow">Self-signed</span>'
+    : '<span class="status-badge green">Custom / CA-issued</span>';
+  const certBlock = tls.present ? `
+    <table class="table">
+      <tbody>
+        <tr><td>Type</td><td>${badge}</td></tr>
+        <tr><td>Subject</td><td>${escapeHtml(tls.subject || '-')}</td></tr>
+        <tr><td>Issuer</td><td>${escapeHtml(tls.issuer || '-')}</td></tr>
+        <tr><td>Expires</td><td>${escapeHtml(tls.expires || '-')}</td></tr>
+        <tr><td>File</td><td>${escapeHtml(tls.path || '-')}</td></tr>
+      </tbody>
+    </table>` : '<p>No certificate present.</p>';
+  $('page-content').innerHTML = `
+    <h2>TLS Certificate</h2>
+    ${tls.tls_enabled ? '' : '<div class="alert alert-warning">TLS is disabled (DASHBOARD_TLS=0) — the dashboard is serving plain HTTP.</div>'}
+    ${certBlock}
+    <div class="toolbar"><button class="btn btn-outline" onclick="tlsRegenerate()">Regenerate self-signed</button></div>
+    <h3>Install a custom certificate</h3>
+    <p class="help">Paste a PEM certificate (include the full chain if applicable) and its private key. Changes take effect after a service restart.</p>
+    <div class="form-group"><label>Certificate (PEM)</label><textarea id="tls-cert" class="form-control" rows="6" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
+    <div class="form-group"><label>Private Key (PEM)</label><textarea id="tls-key" class="form-control" rows="6" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></div>
+    <button class="btn" onclick="tlsUploadCert()">Save Certificate</button>`;
+}
+
+async function page_audit() {
+  if (currentRole !== 'admin') return adminOnlyPage('Audit Log');
+  $('page-content').innerHTML = `
+    <h2>Audit Log</h2>
+    <div class="toolbar"><button class="btn btn-sm" onclick="auditRefresh()">Refresh</button></div>
+    <div id="audit-body"><p class="help">Loading…</p></div>
+    <p class="help">Records every change (and login attempt): who, when, from where, and the result.
+      Reads are not logged. Stored append-only in <code>audit.log</code>.</p>`;
+  auditRefresh();
+}
+
+// ─── Modules ────────────────────────────────────────────
+async function page_modules() {
+  if (currentRole !== 'admin') return adminOnlyPage('Modules');
+  const r = await API.get('/api/modules');
+  const cats = {};
+  (r.modules || []).forEach(m => { (cats[m.category] = cats[m.category] || []).push(m); });
+  let html = `<h2>Modules</h2>
+    <p class="help">Turn features on or off. Disabling a module hides it from the
+      left-hand navigation for everyone — it does not delete any data or stop the
+      underlying service, and you can re-enable it here at any time.</p>`;
+  for (const [cat, list] of Object.entries(cats)) {
+    html += `<div class="card"><h3>${escapeHtml(cat)}</h3><table class="table"><tbody>`;
+    list.forEach(m => {
+      html += `<tr>
+        <td>${escapeHtml(m.label)}</td>
+        <td style="text-align:right">
+          <label class="switch">
+            <input type="checkbox" ${m.enabled ? 'checked' : ''}
+                   onchange="toggleModule('${jsArg(m.id)}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </td></tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+  $('page-content').innerHTML = html;
+}
+
+function userCreate() {
+  openModal('New Dashboard User', `
+    <div class="form-group"><label>Username</label><input id="nu-name" class="form-control" autocomplete="off"></div>
+    <div class="form-group"><label>Password</label><input id="nu-pass" type="password" class="form-control" autocomplete="new-password"></div>
+    <div class="form-group"><label>Role</label>
+      <select id="nu-role" class="form-control"><option value="readonly">Read-only (view only)</option><option value="admin">Administrator (full access)</option></select></div>
+    <div class="form-group"><label><input type="checkbox" id="nu-smb"> Also create a matching SMB user (same name &amp; password) for file shares</label></div>
+    <button class="btn" onclick="userDoCreate()">Create User</button>`);
+}
+function userPassword(username) {
+  openModal('Set password: ' + username, `
+    <div class="form-group"><label>New password</label><input id="up-pass" type="password" class="form-control" autocomplete="new-password"></div>
+    <button class="btn" onclick="userDoPassword('${jsArg(username)}')">Set Password</button>`);
+}
+function tokenCreate() {
+  openModal('New API Token', `
+    <div class="form-group"><label>Name (what it's for)</label>
+      <input id="tk-name" class="form-control" placeholder="backup-script" autocomplete="off"></div>
+    <div class="form-group"><label>Role</label>
+      <select id="tk-role" class="form-control">
+        <option value="readonly">Read-only (GET only)</option>
+        <option value="admin">Administrator (full access)</option>
+      </select></div>
+    <button class="btn" onclick="tokenDoCreate()">Create Token</button>`);
+}
+
+
+// ─── Firewall (ufw) ─────────────────────────────────────
+async function page_firewall() {
+  if (currentRole !== 'admin') return adminOnlyPage('Firewall');
+  const f = await API.get('/api/firewall');
+  if (!f.available) {
+    $('page-content').innerHTML = `<h2>Firewall</h2>
+      <div class="alert alert-info">ufw is not installed on this host, so there is nothing to manage here.
+        Install it (<code>apt install ufw</code>) and reload this page.</div>`;
+    return;
+  }
+  if (!f.status_known) {
+    $('page-content').innerHTML = `<h2>Firewall</h2>
+      <div class="alert alert-warning">ufw is installed but the dashboard could not query it — most likely the
+        sudoers rule for <code>ufw</code> is missing on this node (added by the installer; older installs need it
+        added to <code>/etc/sudoers.d</code> by hand).</div>`;
+    return;
+  }
+  const badge = f.active
+    ? '<span class="status-badge green">active</span>'
+    : '<span class="status-badge red">inactive</span>';
+  const d = f.defaults || {};
+  fwRulesCache = f.rules || [];
+  const rows = fwRulesCache.map(r => `<tr>
+      <td><code>${escapeHtml(r.to)}</code>${r.v6 ? ' <span class="help">(v6)</span>' : ''}</td>
+      <td><span class="status-badge ${(r.action === 'ALLOW' || r.action === 'LIMIT') ? 'green' : 'red'}">${escapeHtml(r.action)}</span></td>
+      <td>${escapeHtml(r.from || 'Anywhere')}</td>
+      <td class="help">${escapeHtml(r.comment || '')}</td>
+      <td>${/^\d+(\/(tcp|udp))?$/.test(r.to) ? `<button class="btn btn-sm btn-outline"
+            onclick="fwEditRule(${r.number})">Edit</button> ` : ''}<button class="btn btn-sm btn-outline"
+            onclick="fwDeleteRule(${r.number}, '${jsArg(r.to)}', '${jsArg(r.action)}', '${jsArg(r.from)}')">Delete</button></td>
+    </tr>`).join('');
+  const toggleBtn = f.active
+    ? `<button class="btn btn-outline" onclick="fwDisable()">Disable Firewall</button>`
+    : `<button class="btn" onclick="fwEnableModal()">Enable Firewall</button>`;
+  $('page-content').innerHTML = `
+    <h2>Firewall ${badge}</h2>
+    <p class="help">Host firewall (ufw) — inbound traffic control. Port <code>${f.dashboard_port}</code> serves
+      this dashboard: it is allowed automatically when the firewall is enabled (unless a rule for it already
+      exists), and changes that could cut off this page ask for confirmation first — you can still scope or
+      remove its rule deliberately.</p>
+    <div class="toolbar">${toggleBtn}</div>
+    <h3 style="margin-top:24px">Default policy</h3>
+    <div style="display:flex;gap:8px;align-items:end;max-width:560px">
+      <div class="form-group" style="flex:1"><label>Incoming traffic</label>
+        <select id="fw-default-in" class="form-control">
+          <option value="deny" ${d.incoming !== 'allow' && d.incoming !== 'reject' ? 'selected' : ''}>Deny (block everything not allowed below)</option>
+          <option value="reject" ${d.incoming === 'reject' ? 'selected' : ''}>Reject (block + tell the sender)</option>
+          <option value="allow" ${d.incoming === 'allow' ? 'selected' : ''}>Allow (only blocked ports are stopped)</option>
+        </select></div>
+      <div class="form-group"><button class="btn" onclick="fwSetPolicy()">Apply</button></div>
+    </div>
+    <p class="help">Currently: incoming <strong>${escapeHtml(d.incoming || '?')}</strong>,
+      outgoing <strong>${escapeHtml(d.outgoing || '?')}</strong> (outgoing is left alone — servers need to reach out).</p>
+    ${f.active ? `
+    <h3 style="margin-top:24px">Rules</h3>
+    <table class="table">
+      <thead><tr><th>Port / To</th><th>Action</th><th>From</th><th></th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5">No rules yet — with default deny, add an allow rule per service you expose.</td></tr>'}</tbody>
+    </table>
+    <div class="toolbar"><button class="btn" onclick="fwRuleModal()">+ Add Rule</button></div>`
+    : `<div class="alert alert-info">The firewall is <strong>inactive</strong> — all traffic is currently accepted.
+        Rules are shown and managed while the firewall is enabled.</div>`}`;
+}
+
+function fwEnableModal() {
+  openModal('Enable Firewall', `
+    <p>Enabling turns on the default policy immediately.</p>
+    <div class="form-group"><label><input type="checkbox" id="fw-allow-dashboard" checked>
+      Allow the dashboard port — recommended; skipped automatically if a rule for it already exists
+      (a scoped rule is never widened)</label></div>
+    <div class="form-group"><label><input type="checkbox" id="fw-allow-ssh" checked>
+      Also allow SSH (port 22) — recommended if you manage this machine over SSH</label></div>
+    <button class="btn" onclick="fwEnable()">Enable</button>`);
+}
+async function fwEnable() {
+  const allow_ssh = $('fw-allow-ssh').checked;
+  const allow_dashboard = $('fw-allow-dashboard').checked;
+  if (!allow_dashboard && !confirm('Enable WITHOUT ensuring the dashboard port is allowed? '
+      + 'If the default policy is deny and no rule covers it, you will lose this page the moment '
+      + 'the firewall comes up.')) return;
+  closeModal();
+  try {
+    const r = await API.post('/api/firewall/enable', { allow_ssh, allow_dashboard });
+    if (!r.success) { alert(r.error || 'Failed'); return; }
+  } catch (e) { alert(e.message); }
+  page_firewall();
+}
+async function fwDisable() {
+  if (!confirm('Disable the firewall? All inbound traffic will be accepted.')) return;
+  try {
+    const r = await API.post('/api/firewall/disable', {});
+    if (!r.success) { alert(r.error || 'Failed'); return; }
+  } catch (e) { alert(e.message); }
+  page_firewall();
+}
+async function fwSetPolicy() {
+  const incoming = $('fw-default-in').value;
+  try {
+    const r = await API.post('/api/firewall/policy', { incoming });
+    if (!r.success) { alert(r.error || 'Failed'); return; }
+  } catch (e) { alert(e.message); }
+  page_firewall();
+}
+
+let fwRulesCache = [];
+let fwEditing = null;   // parsed rule row when the modal is editing, else null
+
+function fwRuleModal(rule) {
+  fwEditing = rule || null;
+  const m = rule ? rule.to.match(/^(\d+)(?:\/(tcp|udp))?$/) : null;
+  const cur = rule ? {
+    action: rule.action.toLowerCase(),
+    port: m ? m[1] : '',
+    proto: m && m[2] ? m[2] : 'any',
+    source: rule.from === 'Anywhere' ? '' : rule.from,
+    comment: rule.comment || '',
+  } : { action: 'allow', port: '', proto: 'any', source: '', comment: '' };
+  const sel = v => v === cur.proto ? ' selected' : '';
+  const act = v => v === cur.action ? ' selected' : '';
+  openModal(rule ? `Edit Firewall Rule [${rule.number}]` : 'Add Firewall Rule', `
+    ${rule ? '<p class="help">ufw has no in-place edit: saving replaces the rule, and the new one is appended at the end of the list.</p>' : ''}
+    <div class="form-group"><label>Action</label>
+      <select id="fw-action" class="form-control">
+        <option value="allow"${act('allow')}>Allow</option>
+        <option value="deny"${act('deny')}>Deny (drop silently)</option>
+        <option value="reject"${act('reject')}>Reject (refuse + notify sender)</option>
+        <option value="limit"${act('limit')}>Limit (allow, rate-limited — good for SSH)</option>
+      </select></div>
+    <div class="form-group"><label>Port</label><input id="fw-port" class="form-control" placeholder="e.g. 445" value="${escapeHtml(cur.port)}"></div>
+    <div class="form-group"><label>Protocol</label>
+      <select id="fw-proto" class="form-control">
+        <option value="any"${sel('any')}>TCP + UDP</option><option value="tcp"${sel('tcp')}>TCP</option><option value="udp"${sel('udp')}>UDP</option>
+      </select></div>
+    <div class="form-group"><label>From (optional — IP or subnet; empty = anywhere)</label>
+      <input id="fw-source" class="form-control" placeholder="192.168.1.0/24" value="${escapeHtml(cur.source)}"></div>
+    <div class="form-group"><label>Comment (optional)</label>
+      <input id="fw-comment" class="form-control" placeholder="what this rule is for" value="${escapeHtml(cur.comment)}"></div>
+    <button class="btn" onclick="fwSubmitRule()">${rule ? 'Save Changes' : 'Add Rule'}</button>`);
+}
+function fwEditRule(number) {
+  const rule = fwRulesCache.find(r => r.number === number);
+  if (rule) fwRuleModal(rule);
+}
+async function fwSubmitRule(confirmed) {
+  const rule = {
+    action: $('fw-action').value,
+    port: parseInt($('fw-port').value, 10),
+    proto: $('fw-proto').value,
+    source: $('fw-source').value.trim(),
+    comment: $('fw-comment').value.trim(),
+  };
+  if (!rule.port) { alert('Port required'); return; }
+  const body = fwEditing
+    ? { number: fwEditing.number, rule,
+        expect: { to: fwEditing.to, action: fwEditing.action, from: fwEditing.from } }
+    : rule;
+  if (confirmed) body.confirm = true;
+  try {
+    const r = await API.post(fwEditing ? '/api/firewall/rule/update' : '/api/firewall/rule', body);
+    if (r.needs_confirm) { if (confirm(r.error)) return fwSubmitRule(true); return; }
+    if (!r.success) { alert(r.error || 'Failed'); return; }
+    closeModal();
+  } catch (e) { alert(e.message); return; }
+  page_firewall();
+}
+async function fwDeleteRule(number, to, action, from, confirmed) {
+  if (!confirmed && !confirm(`Delete rule [${number}] ${action} ${to} from ${from || 'Anywhere'}?`)) return;
+  try {
+    const body = { number, expect: { to, action, from } };
+    if (confirmed) body.confirm = true;
+    const r = await API.post('/api/firewall/rule/delete', body);
+    if (r.needs_confirm) {
+      if (confirm(r.error)) return fwDeleteRule(number, to, action, from, true);
+      return;
+    }
+    if (!r.success) { alert(r.error || 'Failed'); return; }
+  } catch (e) { alert(e.message); }
+  page_firewall();
+}
+
+// ─── Moved from core.js (3.0.0 decluttering): tasks/logs/services/modules/audit/tls/users/tokens/notifications ───
+// core.js is now API/helpers/nav/modal/auth/dashboard-shell only;
+// module page logic lives with its page_* owner.
+
+async function taskRun(id) {
+  try { await API.post(`/api/tasks/${encodeURIComponent(id)}/run`, {}); setTimeout(page_tasks, 900); }
+  catch (e) { alert(e.message); }
+}
+
+// ─── Log viewer ─────────────────────────────────────────
+async function logsRefresh() {
+  const out = $('log-output');
+  if (!out) return;
+  const src = $('log-source').value, pri = $('log-priority').value;
+  const lines = $('log-lines').value, grep = $('log-grep').value.trim();
+  out.textContent = 'Loading…';
+  const qs = new URLSearchParams({ source: src, lines });
+  if (pri) qs.set('priority', pri);
+  if (grep) qs.set('grep', grep);
+  try {
+    const r = await API.get('/api/logs/query?' + qs.toString());
+    out.textContent = r.logs || 'No log entries.';
+    out.scrollTop = out.scrollHeight;
+  } catch (e) { out.textContent = 'Error: ' + e.message; }
+}
+
+async function svcAction(service, action) {
+  try {
+    await API.post(`/api/service/${service}/${action}`, {});
+    page_services();
+  } catch(e) { alert(e.message); }
+}
+
+async function svcLogs(service) {
+  try {
+    const r = await API.get(`/api/logs/${service}`);
+    openModal(`Logs: ${service}`, `<pre class="raw-output" style="max-height:500px;overflow:auto">${escapeHtml(r.logs || 'No logs')}</pre>`);
+  } catch(e) { alert(e.message); }
+}
+
+async function toggleModule(id, enabled) {
+  try {
+    await API.post('/api/modules', { id, enabled });
+    await applyModules();
+  } catch (e) {
+    alert(e.message);
+    page_modules();  // re-sync the switches with server state
+  }
+}
+
+async function auditRefresh() {
+  const el = $('audit-body');
+  if (!el) return;
+  let data;
+  try { data = await API.get('/api/audit?limit=200'); }
+  catch(e) { el.innerHTML = `<p class="help">Could not load audit log: ${escapeHtml(e.message)}</p>`; return; }
+  const entries = data.entries || [];
+  if (!entries.length) { el.innerHTML = '<p class="help">No audit entries yet.</p>'; return; }
+  const badge = r => r === 'ok' ? 'green' : (r === 'denied' ? 'yellow' : 'gray');
+  const rows = entries.map(e => {
+    const tgt = (e.target && Object.keys(e.target).length) ? ' ' + JSON.stringify(e.target) : '';
+    return `<tr>
+      <td><code>${escapeHtml(e.ts || '-')}</code></td>
+      <td>${escapeHtml(e.user || '-')}</td>
+      <td>${escapeHtml(e.ip || '-')}</td>
+      <td><code>${escapeHtml(e.method || '')} ${escapeHtml(e.path || '')}${escapeHtml(tgt)}</code></td>
+      <td><span class="status-badge ${badge(e.result)}">${escapeHtml(e.result || '')} ${e.status || ''}</span></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table class="table">
+      <thead><tr><th>Time</th><th>User</th><th>IP</th><th>Action</th><th>Result</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function tlsUploadCert() {
+  const cert = $('tls-cert').value.trim();
+  const key = $('tls-key').value.trim();
+  if (!cert || !key) { alert('Paste both the certificate and the private key'); return; }
+  try {
+    const r = await API.post('/api/tls/cert', { cert, key });
+    if (r.success) alert('Certificate saved. Restart the dashboard service on this node to apply it.');
+    page_certificate();
+  } catch(e) { alert(e.message); }
+}
+
+async function tlsRegenerate() {
+  if (!confirm('Generate a new self-signed certificate? This replaces the current one.')) return;
+  try {
+    const r = await API.post('/api/tls/regenerate', {});
+    if (r.success) alert('New self-signed certificate generated. Restart the dashboard service on this node to apply it.');
+    page_certificate();
+  } catch(e) { alert(e.message); }
+}
+
+async function userDoCreate() {
+  const username = $('nu-name').value.trim(), password = $('nu-pass').value, role = $('nu-role').value, smb = $('nu-smb').checked;
+  if (!username || !password) { alert('Username and password required'); return; }
+  try {
+    const r = await API.post('/api/users', { username, password, role, smb });
+    if (!r.success) { alert(r.error || 'Failed'); return; }
+    closeModal(); page_users();
+  } catch(e) { alert(e.message); }
+}
+async function userSetRole(username, role) {
+  if (!confirm(`Change ${username} to ${role}?`)) return;
+  try { const r = await API.post(`/api/users/${encodeURIComponent(username)}/role`, { role }); if (!r.success) { alert(r.error || 'Failed'); return; } page_users(); } catch(e) { alert(e.message); }
+}
+async function userDoPassword(username) {
+  const password = $('up-pass').value;
+  if (!password) { alert('Password required'); return; }
+  try { const r = await API.post(`/api/users/${encodeURIComponent(username)}/password`, { password }); if (!r.success) { alert(r.error || 'Failed'); return; } closeModal(); alert('Password updated.'); } catch(e) { alert(e.message); }
+}
+async function userDelete(username) {
+  if (!confirm(`Delete dashboard user "${username}"?`)) return;
+  try { const r = await API.delete(`/api/users/${encodeURIComponent(username)}`); if (!r.success) { alert(r.error || 'Failed'); return; } page_users(); } catch(e) { alert(e.message); }
+}
+
+// ─── API tokens ─────────────────────────────────────────
+async function tokenDoCreate() {
+  const name = $('tk-name').value.trim();
+  const role = $('tk-role').value;
+  if (!name) { alert('Name required'); return; }
+  try {
+    const r = await API.post('/api/tokens', { name, role });
+    if (!r.success) { alert(r.error || 'Failed'); return; }
+    openModal('Token created — copy it now', `
+      <div class="alert alert-warning"><strong>This is shown only once.</strong> Store it somewhere safe;
+        it can't be retrieved again (only revoked).</div>
+      <div class="form-group"><label>Token for <strong>${escapeHtml(r.name)}</strong> (${escapeHtml(r.role)})</label>
+        <textarea class="form-control" rows="2" readonly onclick="this.select()">${escapeHtml(r.token)}</textarea></div>
+      <p class="help">Use it as a header: <code>Authorization: Bearer ${escapeHtml(r.token)}</code></p>
+      <button class="btn" onclick="closeModal(); page_users();">Done</button>`);
+  } catch(e) { alert(e.message); }
+}
+
+async function tokenDelete(id, name) {
+  if (!confirm(`Revoke API token "${name}"? Any script using it will stop working.`)) return;
+  try { const r = await API.delete(`/api/tokens/${encodeURIComponent(id)}`); if (!r.success) { alert(r.error || 'Failed'); return; } page_users(); } catch(e) { alert(e.message); }
+}
+
+// ─── Notifications ──────────────────────────────────────
+async function notifSave() {
+  const body = {
+    email: {
+      enabled: $('nf-email-en').checked, host: $('nf-host').value.trim(),
+      port: parseInt($('nf-port').value) || 587, security: $('nf-sec').value,
+      username: $('nf-user').value.trim(), password: $('nf-pass').value,
+      from: $('nf-from').value.trim(), to: $('nf-to').value.trim(),
+    },
+    webhook: { enabled: $('nf-web-en').checked, url: $('nf-url').value.trim() },
+  };
+  try {
+    const r = await API.post('/api/notifications', body);
+    if (!r.success) { alert(r.error || 'Failed'); return; }
+    $('nf-result').innerHTML = '<span style="color:var(--green)">✓ Saved.</span>';
+  } catch(e) { alert(e.message); }
+}
+
+async function notifTest() {
+  $('nf-result').textContent = 'Sending test (using the last saved config)…';
+  try {
+    const r = await API.post('/api/notifications/test', {});
+    if (r.success) { $('nf-result').innerHTML = '<span style="color:var(--green)">✓ Test sent.</span>'; return; }
+    const detail = (r.results || []).map(x => `${x.channel}: ${x.ok ? 'ok' : escapeHtml(x.error)}`).join(' · ');
+    $('nf-result').innerHTML = `<span style="color:var(--red)">✗ ${escapeHtml(detail || r.error || 'failed')}</span>`;
+  } catch(e) { $('nf-result').innerHTML = `<span style="color:var(--red)">✗ ${escapeHtml(e.message)}</span>`; }
+}
+
+// ─── System Updates (updates module) ────────────────────
+// Read-only pending-update view: counts + package table from the module's
+// cached package-manager check. "Check now" re-runs it; the page polls while
+// a check is in flight. (Applying updates is a planned later phase — it
+// needs a root helper, so this page stays a viewer for now.)
+let _updPollTimer = null;
+
+function _updAgo(ts) {
+  if (!ts) return 'never';
+  const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h ${m % 60}m ago` : `${Math.floor(h / 24)}d ago`;
+}
+
+async function page_updates() {
+  if (_updPollTimer) { clearTimeout(_updPollTimer); _updPollTimer = null; }
+  const u = await API.get('/api/updates');
+  if (!pageActive('updates')) return;
+  const ap = u.apply || {};
+
+  if (ap.running) { renderUpdApplyProgress(ap); return; }
+
+  if (u.checking) {
+    _updPollTimer = setTimeout(() => {
+      if (pageActive('updates')) page_updates();
+    }, 3000);
+  }
+
+  const sec = u.security || 0, avail = u.available || 0;
+  const headline = u.checking
+    ? `<div class="alert alert-info">Checking for updates (${escapeHtml(u.manager)})…</div>`
+    : u.error
+      ? `<div class="alert alert-warning"><strong>Update check failed:</strong> ${escapeHtml(u.error)}</div>`
+      : sec > 0
+        ? `<div class="alert alert-danger"><strong>${sec} security update${sec > 1 ? 's' : ''}</strong> pending (${avail} update${avail > 1 ? 's' : ''} total).</div>`
+        : avail > 0
+          ? `<div class="alert alert-warning"><strong>${avail} update${avail > 1 ? 's' : ''}</strong> available.</div>`
+          : u.checked
+            ? `<div class="health-ok">✓ System is up to date</div>`
+            : `<div class="alert alert-info">No check has run yet.</div>`;
+
+  // Result of the last apply (survives until the next one) + the
+  // authoritative post-apply reboot answer.
+  const applied = ap.rc !== null && ap.rc !== undefined && ap.finished
+    ? (ap.rc === 0
+        ? `<div class="health-ok">✓ Updates applied ${_updAgo(ap.finished)}</div>`
+        : `<div class="alert alert-danger"><strong>Apply failed</strong> (exit ${ap.rc}, ${_updAgo(ap.finished)}) — see the log below.</div>`)
+    : '';
+  const reboot = ap.reboot_required
+    ? `<div class="alert alert-warning upd-reboot-row"><span><strong>Reboot required</strong> to finish applying
+         updates (kernel/libc-level change).</span>${currentRole === 'admin'
+           ? `<button class="btn btn-sm btn-warning" onclick="updRebootModal()">Reboot now</button>` : ''}</div>`
+    : '';
+  const log = (ap.log || []).length
+    ? `<details style="margin-top:10px"><summary class="help">Last apply log (${ap.log.length} lines)</summary>
+         <pre class="upd-log">${escapeHtml(ap.log.join('\n'))}</pre></details>`
+    : '';
+
+  const rows = (u.packages || []).map(p => `<tr>
+      <td><code>${escapeHtml(p.name)}</code></td>
+      <td class="help">${escapeHtml(p.current || '—')}</td>
+      <td>${escapeHtml(p.candidate)}</td>
+      <td class="help">${escapeHtml(p.origin || '')}</td>
+      <td>${p.security ? '<span class="status-badge red">security</span> ' : ''}${p.reboot_likely ? '<span class="status-badge yellow">reboot-likely</span>' : ''}</td>
+    </tr>`).join('');
+  const table = (u.packages || []).length ? `
+    <table class="table" style="margin-top:14px">
+      <thead><tr><th>Package</th><th>Installed</th><th>Available</th><th>Source</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>` : '';
+
+  const checkBtn = currentRole === 'admin'
+    ? `<button class="btn btn-outline" id="upd-check" ${u.checking ? 'disabled' : ''}
+         onclick="updCheckNow()">Check now</button>` : '';
+  const applyBtn = (currentRole === 'admin' && avail > 0 && u.apply_available)
+    ? `<button class="btn" onclick="updApplyModal(${avail}, ${sec})">Apply all updates</button>` : '';
+  const helperNote = (currentRole === 'admin' && avail > 0 && !u.apply_available)
+    ? `<p class="help">Applying from here needs the root updates helper, which is not installed on this
+         node — re-run the installer with <code>--helpers-only</code>.</p>` : '';
+
+  $('page-content').innerHTML = `
+    <h2>Updates</h2>
+    <p class="help">Pending ${escapeHtml(u.manager)} package updates, checked against the system package
+      lists (last checked: ${_updAgo(u.checked)}). <em>reboot-likely</em> is a heuristic
+      (kernel/libc/systemd/…) — the definitive reboot answer appears after applying.</p>
+    <div class="toolbar">${applyBtn}${checkBtn}</div>
+    ${helperNote}${applied}${reboot}${headline}${log}${table}`;
+}
+
+function renderUpdApplyProgress(ap) {
+  const pct = ap.total ? Math.min(100, Math.round((ap.done / ap.total) * 100)) : 0;
+  const step = ap.total ? ` — step ${ap.done} of ${ap.total}` : '';
+  $('page-content').innerHTML = `
+    <h2>Updates</h2>
+    <div class="alert alert-info"><strong>Applying updates…</strong> started ${_updAgo(ap.started)}${step}.
+      Leave this page open or come back — progress is tracked server-side.</div>
+    ${ap.total ? usageBar(pct) : ''}
+    <pre class="upd-log" id="upd-log">${escapeHtml((ap.log || []).join('\n') || 'Waiting for package manager output…')}</pre>`;
+  const lg = $('upd-log');
+  if (lg) lg.scrollTop = lg.scrollHeight;
+  _updPollTimer = setTimeout(() => {
+    if (pageActive('updates')) page_updates();
+  }, 2000);
+}
+
+function updApplyModal(avail, sec) {
+  openModal('Apply all updates', `
+    <div class="alert alert-warning"><strong>This upgrades ${avail} package${avail > 1 ? 's' : ''}
+      ${sec > 0 ? `(including ${sec} security update${sec > 1 ? 's' : ''}) ` : ''}on this host.</strong>
+      The package manager may restart system services while it runs, and a reboot may be
+      required afterwards — you will be told if so. The dashboard itself stays up.</div>
+    <div class="toolbar">
+      <button class="btn btn-danger" onclick="closeModal(); updApplyGo()">Apply now</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+
+async function updApplyGo() {
+  try { await API.post('/api/updates/apply', {}); } catch (e) { alert(e.message); return; }
+  page_updates();
+}
+
+function updRebootModal() {
+  openModal('Reboot to finish updates', `
+    <div class="alert alert-warning"><strong>The node reboots now.</strong> Active I/O (transfers,
+      replication, running instances) is interrupted; this page waits for the node to come back
+      and reloads automatically.</div>
+    <div class="toolbar">
+      <button class="btn btn-warning" onclick="closeModal(); powerReboot()">Reboot</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+
+async function updCheckNow() {
+  try { await API.post('/api/updates/check', {}); } catch (e) { alert(e.message); return; }
+  page_updates();
+}
+
+// ─── Diagnostics: every enabled module's prerequisites on THIS node ────
+async function page_diagnostics() {
+  const el = $('page-content');
+  el.innerHTML = '<h2>Diagnostics</h2><p class="help">Probing helpers, sudo grants, groups, timers, binaries and mounts…</p>';
+  let d;
+  try { d = await API.get('/api/diagnostics'); }
+  catch (e) { el.innerHTML = `<h2>Diagnostics</h2><div class="error">${escapeHtml(e.message)}</div>`; return; }
+  const cls = { ok: 'green', warn: 'yellow', fail: 'red', skip: 'gray' };
+  const c = d.counts || {};
+  const groups = {};
+  for (const ch of d.checks || []) (groups[ch.module] = groups[ch.module] || []).push(ch);
+  const order = Object.keys(groups).sort((a, b) => (a === 'core' ? -1 : b === 'core' ? 1 : a.localeCompare(b)));
+  let html = `<h2>Diagnostics</h2>
+    <div class="alert ${c.fail ? 'alert-danger' : c.warn ? 'alert-warning' : 'alert-info'}">
+      ${c.fail ? `<strong>${c.fail} failing</strong> · ` : ''}${c.warn ? `${c.warn} warning${c.warn === 1 ? '' : 's'} · ` : ''}${c.ok || 0} ok${c.skip ? ` · ${c.skip} not applicable` : ''}
+      <span class="help"> — service user <code>${escapeHtml(d.user)}</code>, unit prefix <code>${escapeHtml(d.unit_prefix)}</code>, checked ${new Date(d.checked_at * 1000).toLocaleTimeString()}</span>
+      <button class="btn btn-sm btn-outline" style="float:right" onclick="page_diagnostics()">Re-run</button>
+    </div>`;
+  for (const m of order) {
+    const rows = groups[m].sort((a, b) => ({ fail: 0, warn: 1, ok: 2, skip: 3 })[a.state] - ({ fail: 0, warn: 1, ok: 2, skip: 3 })[b.state]);
+    const bad = rows.filter(r => r.state === 'fail').length, warn = rows.filter(r => r.state === 'warn').length;
+    html += `<div class="card"><h3>${escapeHtml(m === 'core' ? 'Core' : m)} ${bad ? `<span class="status-badge red">${bad} failing</span>` : warn ? `<span class="status-badge yellow">${warn} warning${warn === 1 ? '' : 's'}</span>` : '<span class="status-badge green">ok</span>'}</h3>
+      <table class="table"><tbody>${rows.map(r => `<tr>
+        <td style="width:1%"><span class="status-badge ${cls[r.state] || 'gray'}">${escapeHtml(r.state)}</span></td>
+        <td>${escapeHtml(r.name)}<div class="help">${escapeHtml(r.detail || '')}</div></td>
+        <td>${r.fix ? `<code style="white-space:pre-wrap">${escapeHtml(r.fix)}</code>` : ''}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ─── Backup & Restore: the node's own configuration as one bundle ──────
+let ncBundle = null;     // {name, b64} of the file picked for restore
+async function page_nodeconfig() {
+  const el = $('page-content');
+  let inv;
+  try { inv = await API.get('/api/config/inventory'); }
+  catch (e) { el.innerHTML = `<h2>Backup &amp; Restore</h2><div class="error">${escapeHtml(e.message)}</div>`; return; }
+  const items = inv.items || [];
+  el.innerHTML = `<h2>Backup &amp; Restore</h2>
+    <p class="help">Everything that makes <strong>${escapeHtml(inv.hostname)}</strong> this node and is not in the code: users and token hashes, module toggles, SSO enrolment, notification targets, replication jobs and keys, schedules, the TLS pair, dnsmasq state and managed compose stacks. A rebuild becomes install → restore → restart.</p>
+    <div class="card"><h3>Export</h3>
+      <table class="table"><tbody>${items.map(i => `<tr>
+        <td style="width:1%"><input type="checkbox" class="nc-item" value="${escapeHtml(i.id)}" ${i.present ? 'checked' : 'disabled'}></td>
+        <td>${escapeHtml(i.description)}${i.secret ? ' <span class="status-badge yellow" title="contains credentials — use a passphrase">secret</span>' : ''}</td>
+        <td class="help">${i.present ? `${i.files} file${i.files === 1 ? '' : 's'} · ${fmtBytes(i.bytes)}` : 'not present here'}</td></tr>`).join('')}</tbody></table>
+      <div class="form-group"><label>Passphrase <span class="help">(recommended — the bundle holds password hashes, token hashes, the TLS key and any Hugging Face token; AES-256 with an integrity check)</span></label>
+        <input id="nc-pass" type="password" class="form-control" placeholder="8+ characters, or leave empty for a plain archive"></div>
+      <button class="btn" onclick="ncExport()">Download bundle</button> <span id="nc-export-note" class="help"></span>
+    </div>
+    <div class="card"><h3>Restore</h3>
+      <div class="form-group"><label>Bundle file</label><input id="nc-file" type="file" class="form-control" onchange="ncPick(this)"></div>
+      <div class="form-group"><label>Passphrase (if encrypted)</label><input id="nc-rpass" type="password" class="form-control"></div>
+      <button class="btn btn-outline" onclick="ncInspect()">Inspect</button> <span id="nc-inspect-note" class="help"></span>
+      <div id="nc-inspect"></div>
+    </div>
+    <div class="card"><h3>From the shell</h3><p class="help">On a fresh install with no admin session yet:</p>
+      <pre class="log">DASHBOARD_CONFIG_PASSPHRASE='…' python app.py config-restore /path/to/nexus-config-*.tar.gz.enc
+systemctl restart ${escapeHtml(inv.unit_prefix || 'nexus-dashboard')}</pre></div>`;
+}
+
+async function ncExport() {
+  const include = Array.from(document.querySelectorAll('.nc-item:checked')).map(c => c.value);
+  const passphrase = $('nc-pass').value;
+  const note = $('nc-export-note');
+  if (passphrase && passphrase.length < 8) { note.textContent = 'passphrase must be at least 8 characters'; return; }
+  if (!passphrase && !confirm('Export WITHOUT a passphrase? The bundle will contain password hashes, token hashes and the TLS private key in the clear.')) return;
+  note.textContent = 'building…';
+  try {
+    const r = await fetch('/api/config/export', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                   body: JSON.stringify({ passphrase, include }) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
+    const name = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name ? name[1] : 'nexus-config.tar.gz'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    note.textContent = `${a.download} (${fmtBytes(blob.size)}, ${r.headers.get('X-Nexus-Files')} files)`;
+  } catch (e) { note.textContent = e.message; }
+}
+
+function ncPick(input) {
+  const f = input.files && input.files[0];
+  ncBundle = null;
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { ncBundle = { name: f.name, b64: String(rd.result).split(',')[1] || '' }; };
+  rd.readAsDataURL(f);
+}
+
+async function ncInspect() {
+  const note = $('nc-inspect-note'), box = $('nc-inspect');
+  if (!ncBundle) { note.textContent = 'pick a bundle file first'; return; }
+  note.textContent = 'reading…'; box.innerHTML = '';
+  try {
+    const r = await API.post('/api/config/inspect', { bundle: ncBundle.b64, passphrase: $('nc-rpass').value });
+    const m = r.manifest || {};
+    const items = Array.from(new Set(r.files.map(f => f.item)));
+    const cls = { new: 'green', differs: 'yellow', same: 'gray' };
+    note.textContent = '';
+    box.innerHTML = `<p class="help">From <strong>${escapeHtml(m.hostname || '?')}</strong>, dashboard ${escapeHtml(m.app_version || '?')}, made ${m.created ? new Date(m.created * 1000).toLocaleString() : '?'}.</p>
+      <table class="table"><thead><tr><th></th><th>Item</th><th>File</th><th>Size</th><th>vs. this node</th></tr></thead><tbody>
+      ${r.files.map(f => `<tr><td style="width:1%"><input type="checkbox" class="nc-ritem" value="${escapeHtml(f.item)}" checked></td><td>${escapeHtml(f.item)}</td><td><code>${escapeHtml(f.path)}</code></td><td>${fmtBytes(f.bytes)}</td><td><span class="status-badge ${cls[f.status] || 'gray'}">${escapeHtml(f.status)}</span></td></tr>`).join('')}
+      </tbody></table>
+      <div class="alert alert-warning">Restoring <strong>auth.json</strong> replaces every user and token on this node with the bundle's — including your current login. Restoring the TLS pair needs a service restart to take effect.</div>
+      <button class="btn btn-danger" onclick="ncRestore()">Restore selected</button> <span id="nc-restore-note" class="help"></span>`;
+  } catch (e) { note.textContent = e.message; }
+}
+
+async function ncRestore() {
+  const items = Array.from(new Set(Array.from(document.querySelectorAll('.nc-ritem:checked')).map(c => c.value)));
+  if (!items.length) { alert('Nothing selected'); return; }
+  if (!confirm(`Overwrite this node's configuration with ${items.length} item(s) from ${ncBundle.name}?`)) return;
+  const note = $('nc-restore-note');
+  note.textContent = 'restoring…';
+  try {
+    const r = await API.post('/api/config/restore', { bundle: ncBundle.b64, passphrase: $('nc-rpass').value, items, confirm: true });
+    note.textContent = `restored ${r.written.length} file(s) from ${r.source_host}` + (r.restart_recommended ? ' — restart the service to load the TLS pair' : '');
+  } catch (e) { note.textContent = e.message; }
+}

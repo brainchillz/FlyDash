@@ -1,0 +1,13 @@
+{
+  "id": "solarized",
+  "name": "Solarized Paper",
+  "description": "Ethan Schoonover's palette set like print: warm paper, hairline rules, no shadows, small caps, Source Serif, Sans and Code Pro. Dark is base03.",
+  "author": "Nexus Dashboard",
+  "version": "1.0",
+  "modes": [
+    "dark",
+    "light"
+  ],
+  "css": "theme.css",
+  "js": "theme.js"
+}

@@ -1,0 +1,179 @@
+/* Pip-Boy — the Nexus shell seen through a wrist-terminal bezel: tab bar on
+   top, inverted-block list selection, segmented bars, boxed readouts along the
+   bottom, one monochrome HUD colour at a time (data-theme-variant), bloom and
+   scanlines. Light mode is the paper manual: cream stock, dark teal ink, the
+   effects gone. theme.js builds the tab bar and the overlays. Every rule is
+   scoped to html[data-theme="pipboy"]. */
+@font-face { font-family: 'Share Tech Mono'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(share-tech-mono-latin.woff2) format('woff2'); }
+
+html[data-theme="pipboy"] {
+  color-scheme: dark;
+  --bezel: #1b1d19; --bezel-fg: #9aa08a;
+  --bg: #061108; --sidebar-bg: #08160b; --card-bg: #08160b;
+  --border: #175a2a; --border-soft: #10361c;
+  --text: #3dff7c; --text-muted: #1b9e4a;
+  --primary: #3dff7c; --primary-hover: #9dffc0; --on-primary: #061108;
+  --green: #3dff7c; --yellow: #ffd23f; --red: #ff5c5c;
+  --on-yellow: #061108; --red-hover: #ff8a8a; --yellow-hover: #ffe08a;
+  --hover: var(--primary); --hover-soft: rgba(61,255,124,.08);
+  --well: rgba(0,0,0,.35); --overlay: rgba(0,0,0,.7);
+  --raw-bg: #040c05; --raw-fg: #3dff7c; --console-bg: #040c05; --knob: #061108;
+  --radius: 0;
+  --glow: rgba(61,255,124,.55); --scan: rgba(0,0,0,.32); --vignette: rgba(0,0,0,.6);
+  --mono: 'Share Tech Mono', ui-monospace, Menlo, Consolas, monospace;
+  --sans: var(--mono);
+}
+html[data-theme="pipboy"][data-theme-variant="amber"] {
+  --bg: #140d03; --sidebar-bg: #1a1105; --card-bg: #1a1105; --border: #6b4a0d; --border-soft: #3f2c08;
+  --text: #ffb53a; --text-muted: #a8731f; --primary: #ffb53a; --primary-hover: #ffd892; --on-primary: #140d03;
+  --green: #ffb53a; --yellow: #ffe9a8; --red: #ff5c5c; --on-yellow: #140d03;
+  --hover-soft: rgba(255,181,58,.08); --raw-bg: #0e0902; --raw-fg: #ffb53a; --console-bg: #0e0902; --knob: #140d03;
+  --glow: rgba(255,181,58,.5);
+}
+html[data-theme="pipboy"][data-theme-variant="blue"] {
+  --bg: #040d16; --sidebar-bg: #06121d; --card-bg: #06121d; --border: #164a6b; --border-soft: #0d2e42;
+  --text: #4ec1ff; --text-muted: #237aa8; --primary: #4ec1ff; --primary-hover: #a9e0ff; --on-primary: #040d16;
+  --green: #4ec1ff; --yellow: #ffd23f; --red: #ff5c5c; --on-yellow: #040d16;
+  --hover-soft: rgba(78,193,255,.08); --raw-bg: #030910; --raw-fg: #4ec1ff; --console-bg: #030910; --knob: #040d16;
+  --glow: rgba(78,193,255,.5);
+}
+html[data-theme="pipboy"][data-theme-variant="white"] {
+  --bg: #0c0d0c; --sidebar-bg: #121312; --card-bg: #121312; --border: #4a4d4a; --border-soft: #2c2e2c;
+  --text: #e9ede9; --text-muted: #8c918c; --primary: #e9ede9; --primary-hover: #ffffff; --on-primary: #0c0d0c;
+  --green: #e9ede9; --yellow: #ffd23f; --red: #ff5c5c; --on-yellow: #0c0d0c;
+  --hover-soft: rgba(233,237,233,.08); --raw-bg: #070807; --raw-fg: #e9ede9; --console-bg: #070807; --knob: #0c0d0c;
+  --glow: rgba(233,237,233,.4);
+}
+/* Light: the paper manual. Declared last so it beats every HUD variant. */
+html[data-theme="pipboy"].theme-light {
+  color-scheme: light;
+  --bezel: #d9d0b4; --bezel-fg: #5b5a48;
+  --bg: #efe6cf; --sidebar-bg: #f5eedb; --card-bg: #f5eedb;
+  --border: #a79e7f; --border-soft: #cfc5a5;
+  --text: #1e3a34; --text-muted: #5b6a5a;
+  --primary: #1e3a34; --primary-hover: #0f211d; --on-primary: #efe6cf;
+  --green: #2d6a4f; --yellow: #b7791f; --red: #a83a2d;
+  --on-yellow: #efe6cf; --red-hover: #8a2f24; --yellow-hover: #956218;
+  --hover: var(--primary); --hover-soft: rgba(30,58,52,.08);
+  --well: rgba(30,58,52,.06); --overlay: rgba(30,40,36,.45);
+  --raw-bg: #e6dcc0; --raw-fg: #1e3a34; --console-bg: #1e3a34; --knob: #efe6cf;
+  --glow: transparent; --scan: transparent; --vignette: transparent;
+}
+
+/* ── Bezel + screen ── */
+html[data-theme="pipboy"] body { padding: 10px; background: var(--bezel); }
+html[data-theme="pipboy"] .sidebar { border-radius: 14px 0 0 14px; max-height: calc(100vh - 20px); position: sticky; top: 10px; overflow: hidden; }
+html[data-theme="pipboy"] .nav-list { overflow-y: auto; min-height: 0; }
+html[data-theme="pipboy"] .main-col { position: relative; max-height: calc(100vh - 20px); border-radius: 0 14px 14px 0; overflow: hidden; background: var(--bg); box-shadow: inset 0 0 60px rgba(0,0,0,.55); }
+html[data-theme="pipboy"].theme-light .main-col { box-shadow: none; }
+html[data-theme="pipboy"] #login-screen { inset: 10px; border-radius: 14px; box-shadow: inset 0 0 60px rgba(0,0,0,.55); }
+html[data-theme="pipboy"].theme-light #login-screen { box-shadow: inset 0 0 0 1px var(--border); }
+html[data-theme="pipboy"] .modal-overlay { inset: 10px; border-radius: 14px; }
+html[data-theme="pipboy"] .pipboy-crt,
+html[data-theme="pipboy"] .pipboy-vig { position: fixed; inset: 10px; border-radius: 14px; pointer-events: none; z-index: 3000; }
+html[data-theme="pipboy"] .pipboy-crt { background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, var(--scan) 2px 4px); }
+html[data-theme="pipboy"] .pipboy-vig { background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, var(--vignette) 100%); }
+html[data-theme="pipboy"] .pipboy-roll { position: absolute; left: 0; right: 0; height: 140px; pointer-events: none; z-index: 5;
+  background: linear-gradient(180deg, rgba(255,255,255,0), var(--glow) 50%, rgba(255,255,255,0)); opacity: .12; animation: pipboy-roll 7s linear infinite; }
+@keyframes pipboy-roll { from { top: -140px; } to { top: 100%; } }
+html[data-theme="pipboy"].theme-light .pipboy-crt,
+html[data-theme="pipboy"].theme-light .pipboy-vig,
+html[data-theme="pipboy"].theme-light .pipboy-roll { display: none; }
+@media (prefers-reduced-motion: reduce) { html[data-theme="pipboy"] .pipboy-roll { display: none; } }
+
+/* ── Type: one face, uppercase labels, bloom on everything lit ── */
+html[data-theme="pipboy"] .btn,
+html[data-theme="pipboy"] .form-control { font-family: var(--mono); }
+html[data-theme="pipboy"] .content h2, html[data-theme="pipboy"] .content h3, html[data-theme="pipboy"] .modal-body h3,
+html[data-theme="pipboy"] .card-head, html[data-theme="pipboy"] .table thead th, html[data-theme="pipboy"] .nav-cat,
+html[data-theme="pipboy"] .btn, html[data-theme="pipboy"] .sso-sep, html[data-theme="pipboy"] .form-group label,
+html[data-theme="pipboy"] .login-box h1, html[data-theme="pipboy"] .pool-name, html[data-theme="pipboy"] .modal-header h3,
+html[data-theme="pipboy"] .status-badge, html[data-theme="pipboy"] .upd-flag, html[data-theme="pipboy"] .health-ok,
+html[data-theme="pipboy"] .sidebar-header h1, html[data-theme="pipboy"] .machine-strip { text-transform: uppercase; }
+html[data-theme="pipboy"] .content h2 { font-weight: 400; font-size: 20px; letter-spacing: .12em; border-bottom: 2px solid var(--primary); padding-bottom: 6px; margin-bottom: 18px; text-shadow: 0 0 6px var(--glow); }
+html[data-theme="pipboy"] .page-header h2 { border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }
+html[data-theme="pipboy"] .page-header { border-bottom: 2px solid var(--primary); padding-bottom: 6px; margin-bottom: 18px; }
+html[data-theme="pipboy"] .content h3, html[data-theme="pipboy"] .modal-body h3 { font-weight: 400; letter-spacing: .16em; color: var(--text); }
+html[data-theme="pipboy"] .content h3::after, html[data-theme="pipboy"] .modal-body h3::after { border-top: 1px solid var(--border); }
+html[data-theme="pipboy"] .card-head { font-weight: 400; letter-spacing: .14em; color: var(--text-muted); }
+html[data-theme="pipboy"] .card-value, html[data-theme="pipboy"] .card .big { font-size: 30px; line-height: 1; margin: 8px 0 4px; font-weight: 400; text-shadow: 0 0 6px var(--glow); }
+html[data-theme="pipboy"] .card-value[style*="1.4em"] { font-size: 22px !important; }
+html[data-theme="pipboy"] .pool-name, html[data-theme="pipboy"] .login-box h1, html[data-theme="pipboy"] .nav-list a.active,
+html[data-theme="pipboy"] .status-badge.green, html[data-theme="pipboy"] .health-ok, html[data-theme="pipboy"] .machine-strip > span { text-shadow: 0 0 6px var(--glow); }
+html[data-theme="pipboy"] .card-sub, html[data-theme="pipboy"] .subtitle, html[data-theme="pipboy"] .table tbody td,
+html[data-theme="pipboy"] .raw-output, html[data-theme="pipboy"] .log-view, html[data-theme="pipboy"] .form-control { text-shadow: 0 0 3px var(--glow); }
+html[data-theme="pipboy"] .sidebar-header h1 { font-weight: 400; letter-spacing: .14em; font-size: 13px; }
+
+/* ── Sidebar: the inventory list — the selected row inverts ── */
+html[data-theme="pipboy"] .nav-cat { font-weight: 400; letter-spacing: .2em; color: var(--text-muted); }
+html[data-theme="pipboy"] .nav-list a { border-left: 0; padding-top: 4px; padding-bottom: 4px; color: var(--text-muted); }
+html[data-theme="pipboy"] .nav-list a:hover { color: var(--text); }
+html[data-theme="pipboy"] .nav-list a.active { background: var(--primary); color: var(--on-primary); text-shadow: none; box-shadow: 0 0 10px var(--glow); }
+html[data-theme="pipboy"] .nav-list a.active .ico { stroke: var(--on-primary); }
+html[data-theme="pipboy"] .checkitem:hover { background: var(--hover-soft); }
+
+/* ── Tab bar (theme.js builds it): the active tab breaks the rule ── */
+html[data-theme="pipboy"] .pipboy-tabs { display: flex; padding: 14px 28px 0; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; position: relative; flex-shrink: 0; overflow-x: auto; scrollbar-width: none; color: var(--text-muted); font-family: var(--mono); }
+html[data-theme="pipboy"] .pipboy-tabs::after { content: ''; position: absolute; left: 28px; right: 28px; bottom: 0; border-bottom: 2px solid var(--primary); }
+html[data-theme="pipboy"] .pipboy-tab { padding: 4px 16px 6px; cursor: pointer; white-space: nowrap; position: relative; z-index: 1; border: 2px solid transparent; border-bottom: 0; flex: 1; text-align: center; background: none; font: inherit; color: inherit; letter-spacing: inherit; }
+html[data-theme="pipboy"] .pipboy-tab:hover { color: var(--text); }
+html[data-theme="pipboy"] .pipboy-tab.active { color: var(--text); text-shadow: 0 0 6px var(--glow); border-color: var(--primary); background: var(--bg); margin-bottom: -2px; padding-bottom: 8px; }
+html[data-theme="pipboy"] .pipboy-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+/* ── Bottom status bar: boxed readouts, like HP / LEVEL / AP ── */
+html[data-theme="pipboy"] .content { order: 2; }
+html[data-theme="pipboy"] .machine-strip { order: 9; border-bottom: 0; border-top: 2px solid var(--primary); background: var(--bg); gap: 0; padding: 0 28px 10px; font-size: 11.5px; letter-spacing: .08em; align-items: stretch; }
+html[data-theme="pipboy"] .machine-strip > span, html[data-theme="pipboy"] .machine-strip > a { border: 1px solid var(--border); border-top: 0; padding: 5px 12px; color: var(--text); }
+html[data-theme="pipboy"] .machine-strip > span + span, html[data-theme="pipboy"] .machine-strip > a { margin-left: -1px; }
+html[data-theme="pipboy"] .machine-strip .ms-host { font-weight: 400; background: var(--primary); color: var(--on-primary); text-shadow: none; border-color: var(--primary); }
+html[data-theme="pipboy"] .machine-strip .ms-power { padding: 5px 10px; color: var(--text-muted); display: inline-flex; align-items: center; }
+
+/* ── Segmented bars ── */
+html[data-theme="pipboy"] .usage-bar { height: 9px; border: 1px solid var(--border); background: transparent; position: relative; }
+html[data-theme="pipboy"] .usage-bar::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 7px, var(--bg) 7px 9px); pointer-events: none; }
+html[data-theme="pipboy"] .usage-bar-fill { box-shadow: 0 0 6px var(--glow); }
+html[data-theme="pipboy"] .usage-pct { color: var(--text); }
+
+/* ── Cards, tables, buttons, badges ── */
+html[data-theme="pipboy"] .cards, html[data-theme="pipboy"] .card-grid { gap: 1px; background: var(--border-soft); border-color: var(--border); }
+html[data-theme="pipboy"] .health-ok { border: 1px solid var(--border); border-left: 4px solid var(--green); letter-spacing: .06em; }
+html[data-theme="pipboy"] .upd-flag { border: 1px solid var(--border); border-left: 4px solid var(--yellow); letter-spacing: .06em; }
+html[data-theme="pipboy"] .alert { border: 1px solid var(--border); border-left-width: 4px; }
+html[data-theme="pipboy"] .table thead th { font-weight: 400; letter-spacing: .14em; color: var(--text-muted); border-bottom: 1px solid var(--primary); }
+html[data-theme="pipboy"] .table tbody td { border-bottom: 0; padding: 5px 10px; }
+html[data-theme="pipboy"] .table tbody tr:hover { background: transparent; }
+html[data-theme="pipboy"] .table tbody tr:hover td { background: var(--primary); color: var(--on-primary); text-shadow: none; }
+html[data-theme="pipboy"] .table tbody tr:hover .status-badge, html[data-theme="pipboy"] .table tbody tr:hover .btn,
+html[data-theme="pipboy"] .table tbody tr:hover a { color: var(--on-primary); border-color: var(--on-primary); text-shadow: none; }
+html[data-theme="pipboy"] .btn { background: transparent; color: var(--primary); border: 1px solid var(--primary); font-weight: 400; letter-spacing: .1em; padding: 5px 12px; }
+html[data-theme="pipboy"] .btn:hover { background: var(--primary); color: var(--on-primary); box-shadow: 0 0 10px var(--glow); }
+html[data-theme="pipboy"] .btn-outline, html[data-theme="pipboy"] .btn.sso-btn { border-color: var(--border); color: var(--text-muted); }
+html[data-theme="pipboy"] .btn-outline:hover, html[data-theme="pipboy"] .btn.sso-btn:hover { border-color: var(--primary); }
+html[data-theme="pipboy"] .btn-danger { color: var(--red); border-color: var(--red); background: transparent; }
+html[data-theme="pipboy"] .btn-danger:hover { background: var(--red); color: var(--bg); }
+html[data-theme="pipboy"] .btn-warning { color: var(--yellow); border-color: var(--yellow); background: transparent; }
+html[data-theme="pipboy"] .btn-warning:hover { background: var(--yellow); color: var(--bg); }
+html[data-theme="pipboy"] .btn-success { color: var(--green); border-color: var(--green); background: transparent; }
+html[data-theme="pipboy"] .btn-success:hover { background: var(--green); color: var(--bg); }
+html[data-theme="pipboy"] .status-badge { letter-spacing: .08em; font-size: 11px; }
+html[data-theme="pipboy"] .status-badge::before { width: 9px; height: 9px; }
+html[data-theme="pipboy"] .pool-card { border: 1px solid var(--border); }
+html[data-theme="pipboy"] .pool-name { font-size: 18px; letter-spacing: .14em; }
+html[data-theme="pipboy"] .modal { border: 2px solid var(--primary); box-shadow: 0 0 30px var(--glow); }
+html[data-theme="pipboy"] .modal-header { border-bottom: 2px solid var(--primary); }
+html[data-theme="pipboy"] .modal-header h3 { font-weight: 400; letter-spacing: .14em; }
+html[data-theme="pipboy"] .modal-close { color: var(--text); }
+html[data-theme="pipboy"] .form-control { border-color: var(--border); }
+html[data-theme="pipboy"] .form-control:focus { border-color: var(--primary); box-shadow: 0 0 8px var(--glow); }
+html[data-theme="pipboy"] .switch .slider { border: 1px solid var(--border); background: transparent; }
+html[data-theme="pipboy"] .switch .slider::before { background: var(--text-muted); }
+html[data-theme="pipboy"] .switch input:checked + .slider { background: var(--primary); }
+html[data-theme="pipboy"] .switch input:checked + .slider::before { background: var(--on-primary); }
+
+/* ── Login: the boot screen ── */
+html[data-theme="pipboy"] .login-box { border: 2px solid var(--primary); box-shadow: 0 0 30px var(--glow); }
+html[data-theme="pipboy"] .login-box::before { content: 'Nexus unified operating system · termlink protocol'; display: block; font-size: 10px; letter-spacing: .18em; color: var(--text-muted); margin-bottom: 14px; text-transform: uppercase; text-wrap: balance; }
+html[data-theme="pipboy"] .login-box h1 { font-weight: 400; font-size: 20px; letter-spacing: .14em; }
+html[data-theme="pipboy"] .login-box .subtitle::before { content: '> '; }
+html[data-theme="pipboy"] .sso-btn { text-transform: uppercase; letter-spacing: .08em; }

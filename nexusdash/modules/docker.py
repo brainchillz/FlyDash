@@ -1,0 +1,1000 @@
+"""Docker subsystem — containers, images, volumes and networks over the local
+Engine API unix socket.
+
+Same access model as the Containers (LXD) module: the dashboard user joins the
+`docker` group and talks straight to /var/run/docker.sock — no sudo, no CLI.
+On a host without Docker the page reports reachable:false and everything
+degrades gracefully (the LXD-without-socket contract).
+
+Tier 1 scope: manage what exists — lifecycle actions, logs, stats, inspect,
+image pull/delete/prune, volume and network create/delete. Container creation
+and compose stacks are the next tier.
+"""
+import json
+import os
+import re
+import shlex
+import urllib.parse
+from flask import Blueprint, jsonify, request
+
+from ..core.runcmd import run, err
+from . import docker_registry as reg
+import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from .containers.client import _UnixHTTPConnection
+
+bp = Blueprint('docker', __name__)
+
+DOCKER_SOCKET = os.environ.get('DASHBOARD_DOCKER_SOCKET', '/var/run/docker.sock')
+
+# Container/volume/network names and hex ids. No '/', so these are safe to
+# embed in an API path.
+RE_DK_NAME = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}\Z')
+# Image reference: [registry[:port]/]repo/name[:tag][@sha256:...]. Goes into
+# the API as a QUERY VALUE (urlencoded) or a quoted path segment, never a
+# shell — the character class only needs to keep the reference sane.
+RE_DK_IMAGE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,255}\Z')
+RE_DK_SUBNET = re.compile(r'^\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\Z')
+
+DK_CONTAINER_ACTIONS = {'start', 'stop', 'restart', 'pause', 'unpause', 'kill'}
+# Docker's built-in networks — deleting them breaks the daemon's networking.
+DK_BUILTIN_NETWORKS = {'bridge', 'host', 'none'}
+DK_RESTART_POLICIES = {'no', 'always', 'unless-stopped', 'on-failure'}
+RE_DK_ENV = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=[^\x00\n]*\Z')
+RE_DK_HOSTIP = re.compile(r'^[0-9a-fA-F:.]+\Z')
+
+
+class DockerError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status or 500
+        self.message = message
+
+
+def docker_raw(method, path, body=None, timeout=60):
+    """One HTTP round-trip to the Docker Engine API over the unix socket.
+    Returns (status_code, raw_bytes). Raises DockerError on transport
+    failure. Unversioned paths — the daemon serves its newest API."""
+    conn = _UnixHTTPConnection(DOCKER_SOCKET, timeout=timeout)
+    data = None
+    headers = {'Host': 'docker', 'Accept': 'application/json'}
+    if body is not None:
+        data = json.dumps(body).encode()
+        headers['Content-Type'] = 'application/json'
+    try:
+        conn.request(method, path, body=data, headers=headers)
+        resp = conn.getresponse()
+        raw = resp.read()
+        return resp.status, raw
+    except (OSError, ValueError) as e:
+        raise DockerError(502, 'Cannot reach the Docker daemon at %s: %s'
+                          % (DOCKER_SOCKET, e))
+    finally:
+        conn.close()
+
+
+def docker_request(method, path, body=None, timeout=60):
+    """Engine API call returning decoded JSON ({} for empty 2xx responses).
+    Docker reports errors as {"message": ...} with a 4xx/5xx status; 304
+    (already started/stopped) counts as success."""
+    status, raw = docker_raw(method, path, body, timeout=timeout)
+    if status == 304 or not raw:
+        doc = {}
+    else:
+        try:
+            doc = json.loads(raw)
+        except ValueError:
+            doc = {'message': raw[:300].decode('utf-8', 'replace')}
+    if status >= 400:
+        msg = doc.get('message') if isinstance(doc, dict) else None
+        raise DockerError(status, msg or 'Docker daemon error (HTTP %d)' % status)
+    return doc
+
+
+def _dk_error_response(e):
+    return (jsonify({'success': False, 'error': e.message}),
+            e.status if 400 <= e.status < 600 else 500)
+
+
+def _dk_demux_logs(raw):
+    """Docker log/attach streams from non-TTY containers are multiplexed in
+    8-byte-header frames [stream, 0, 0, 0, len(4, BE)]; TTY containers send
+    plain bytes. Returns the payload bytes."""
+    out = []
+    i, n = 0, len(raw)
+    while i + 8 <= n:
+        if raw[i] in (0, 1, 2) and raw[i + 1:i + 4] == b'\x00\x00\x00':
+            ln = int.from_bytes(raw[i + 4:i + 8], 'big')
+            out.append(raw[i + 8:i + 8 + ln])
+            i += 8 + ln
+        else:
+            return raw          # not multiplexed after all
+    return b''.join(out) if out else raw[i:] if i else raw
+
+
+def _dk_ports(ports):
+    """Compact, docker-ps-style port list from a container's Ports array."""
+    out = set()
+    for p in ports or []:
+        proto = p.get('Type', 'tcp')
+        if p.get('PublicPort'):
+            ip = p.get('IP') or ''
+            prefix = '' if ip in ('', '0.0.0.0', '::') else ip + ':'
+            out.add('%s%s->%s/%s' % (prefix, p['PublicPort'],
+                                     p.get('PrivatePort'), proto))
+        else:
+            out.add('%s/%s' % (p.get('PrivatePort'), proto))
+    return sorted(out)
+
+
+def _dk_container_summary(c):
+    return {
+        'id': (c.get('Id') or '')[:12],
+        'name': (c.get('Names') or ['/?'])[0].lstrip('/'),
+        'image': c.get('Image'),
+        'state': c.get('State'),          # running/exited/paused/created/...
+        'status': c.get('Status'),        # human text, e.g. "Up 3 days (healthy)"
+        'created': c.get('Created'),
+        'ports': _dk_ports(c.get('Ports')),
+        'compose_project': (c.get('Labels') or {}).get('com.docker.compose.project', ''),
+    }
+
+
+def _dk_stats_summary(s):
+    """Boil a /stats document down to what the UI shows. CPU% is the classic
+    delta formula; memory subtracts inactive_file (what `docker stats` shows
+    on cgroup v2)."""
+    cpu_pct = None
+    try:
+        cd = (s['cpu_stats']['cpu_usage']['total_usage']
+              - s['precpu_stats']['cpu_usage']['total_usage'])
+        sd = (s['cpu_stats']['system_cpu_usage']
+              - s['precpu_stats']['system_cpu_usage'])
+        ncpu = (s['cpu_stats'].get('online_cpus')
+                or len(s['cpu_stats']['cpu_usage'].get('percpu_usage') or []) or 1)
+        if sd > 0 and cd >= 0:
+            cpu_pct = round(cd / sd * ncpu * 100.0, 1)
+    except (KeyError, TypeError):
+        pass
+    mem = s.get('memory_stats') or {}
+    mem_usage = mem.get('usage')
+    if mem_usage is not None:
+        mem_usage -= (mem.get('stats') or {}).get('inactive_file', 0)
+    rx = tx = 0
+    for nic in (s.get('networks') or {}).values():
+        rx += nic.get('rx_bytes', 0)
+        tx += nic.get('tx_bytes', 0)
+    blk_read = blk_write = 0
+    for entry in (s.get('blkio_stats') or {}).get('io_service_bytes_recursive') or []:
+        op = (entry.get('op') or '').lower()
+        if op == 'read':
+            blk_read += entry.get('value', 0)
+        elif op == 'write':
+            blk_write += entry.get('value', 0)
+    return {
+        'cpu_pct': cpu_pct,
+        'mem_usage': mem_usage,
+        'mem_limit': mem.get('limit'),
+        'net_rx': rx, 'net_tx': tx,
+        'blk_read': blk_read, 'blk_write': blk_write,
+        'pids': (s.get('pids_stats') or {}).get('current'),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Engine / overview
+# ═══════════════════════════════════════════════════════════════════════
+
+@bp.route('/api/docker')
+def docker_overview():
+    try:
+        info = docker_request('GET', '/info', timeout=10)
+        version = docker_request('GET', '/version', timeout=10)
+    except DockerError as e:
+        return jsonify({'reachable': False, 'socket': DOCKER_SOCKET,
+                        'error': e.message})
+    return jsonify({
+        'reachable': True,
+        'socket': DOCKER_SOCKET,
+        'version': version.get('Version'),
+        'api_version': version.get('ApiVersion'),
+        'containers': info.get('Containers', 0),
+        'running': info.get('ContainersRunning', 0),
+        'paused': info.get('ContainersPaused', 0),
+        'stopped': info.get('ContainersStopped', 0),
+        'images': info.get('Images', 0),
+        'storage_driver': info.get('Driver'),
+        'os': info.get('OperatingSystem'),
+        'kernel': info.get('KernelVersion'),
+        'compose': None,        # tier 2: compose stack support
+    })
+
+
+def _docker_summary():
+    """Summary hook (aggregated into /api/summary when the module is enabled)."""
+    try:
+        info = docker_request('GET', '/info', timeout=5)
+    except DockerError:
+        return {}
+    return {'docker': {'containers': info.get('Containers', 0),
+                       'running': info.get('ContainersRunning', 0),
+                       'images': info.get('Images', 0)}}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Containers
+# ═══════════════════════════════════════════════════════════════════════
+
+@bp.route('/api/docker/containers')
+def dk_containers_list():
+    try:
+        cts = docker_request('GET', '/containers/json?all=1')
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify([_dk_container_summary(c) for c in cts])
+
+
+def _dk_pull_ref(ref):
+    """The reference to hand the Engine API. A name-only `fromImage` makes
+    the daemon pull EVERY tag of the repository — `docker pull` adds
+    `:latest` client-side, the API does not — so do the same here."""
+    if '@' in ref or ':' in ref.rsplit('/', 1)[-1]:
+        return ref
+    return ref + ':latest'
+
+
+def _dk_pull(ref, timeout=600):
+    """Pull an image; raises DockerError on failure (including mid-stream
+    NDJSON errors, which arrive with HTTP 200)."""
+    q = urllib.parse.urlencode({'fromImage': _dk_pull_ref(ref)})
+    status, raw = docker_raw('POST', '/images/create?%s' % q, timeout=timeout)
+    last_error = None
+    for line in raw.splitlines():
+        try:
+            doc = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(doc, dict) and doc.get('error'):
+            last_error = doc['error']
+        if isinstance(doc, dict) and doc.get('message') and status >= 400:
+            last_error = doc['message']
+    if status >= 400 or last_error:
+        raise DockerError(status if status >= 400 else 500,
+                          last_error or 'Pull failed (HTTP %d)' % status)
+
+
+def _dk_create_body(data):
+    """Validate + translate the UI's create request into an Engine-API
+    container config. Returns (body, error) — error is a string on bad input."""
+    image = (data.get('image') or '').strip()
+    if not RE_DK_IMAGE.match(image):
+        return None, 'Invalid image reference'
+    restart = data.get('restart', 'no')
+    if restart not in DK_RESTART_POLICIES:
+        return None, 'Restart policy must be one of: %s' % ', '.join(sorted(DK_RESTART_POLICIES))
+    env = []
+    for e in data.get('env') or []:
+        e = (e or '').strip()
+        if not e:
+            continue
+        if not RE_DK_ENV.match(e):
+            return None, 'Environment entries must be KEY=value (got %r)' % e[:40]
+        env.append(e)
+    exposed, bindings = {}, {}
+    for p in data.get('ports') or []:
+        try:
+            host, ct = int(p.get('host')), int(p.get('container'))
+        except (TypeError, ValueError):
+            return None, 'Ports must be numbers'
+        proto = p.get('proto', 'tcp')
+        if proto not in ('tcp', 'udp'):
+            return None, 'Port protocol must be tcp or udp'
+        if not (1 <= host <= 65535 and 1 <= ct <= 65535):
+            return None, 'Ports must be 1-65535'
+        host_ip = (p.get('host_ip') or '').strip()
+        if host_ip and not RE_DK_HOSTIP.match(host_ip):
+            return None, 'Invalid host IP in port mapping'
+        key = '%d/%s' % (ct, proto)
+        exposed[key] = {}
+        bindings.setdefault(key, []).append(
+            {'HostIp': host_ip, 'HostPort': str(host)})
+    binds = []
+    for v in data.get('volumes') or []:
+        src = (v.get('source') or '').strip()
+        dst = (v.get('destination') or '').strip()
+        if not dst.startswith('/') or '..' in dst or ':' in dst:
+            return None, 'Volume destination must be an absolute path (no .. or :)'
+        # Source: a named volume, or an absolute host path (bind mount).
+        if src.startswith('/'):
+            if '..' in src or ':' in src:
+                return None, 'Bind-mount source must be an absolute path (no .. or :)'
+        elif not RE_DK_NAME.match(src):
+            return None, 'Volume source must be a volume name or an absolute path'
+        binds.append('%s:%s%s' % (src, dst, ':ro' if v.get('ro') else ''))
+    network = (data.get('network') or '').strip()
+    if network and not RE_DK_NAME.match(network):
+        return None, 'Invalid network name'
+    command = (data.get('command') or '').strip()
+    cmd = None
+    if command:
+        try:
+            cmd = shlex.split(command)
+        except ValueError as e:
+            return None, 'Command: %s' % e
+    body = {'Image': image, 'Env': env, 'ExposedPorts': exposed,
+            'HostConfig': {'PortBindings': bindings, 'Binds': binds,
+                           'RestartPolicy': {'Name': restart}}}
+    if cmd:
+        body['Cmd'] = cmd
+    if network:
+        body['HostConfig']['NetworkMode'] = network
+    return body, None
+
+
+@bp.route('/api/docker/containers', methods=['POST'])
+def dk_container_create():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if name and not RE_DK_NAME.match(name):
+        return err('Invalid container name')
+    body, bad = _dk_create_body(data)
+    if bad:
+        return err(bad)
+    q = ('?' + urllib.parse.urlencode({'name': name})) if name else ''
+    try:
+        try:
+            created = docker_request('POST', '/containers/create%s' % q, body=body)
+        except DockerError as e:
+            # Image not local yet: pull it (long) and retry once.
+            if e.status == 404 and 'image' in (e.message or '').lower():
+                _dk_pull(body['Image'])
+                created = docker_request('POST', '/containers/create%s' % q, body=body)
+            else:
+                raise
+        cid = (created.get('Id') or '')[:12]
+        if data.get('start', True):
+            docker_request('POST', '/containers/%s/start' % cid, timeout=90)
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True, 'id': cid,
+                    'warnings': created.get('Warnings') or []})
+
+
+@bp.route('/api/docker/containers/<cid>')
+def dk_container_detail(cid):
+    if not RE_DK_NAME.match(cid):
+        return err('Invalid container id')
+    try:
+        c = docker_request('GET', '/containers/%s/json' % cid)
+    except DockerError as e:
+        return _dk_error_response(e)
+    state = c.get('State') or {}
+    cfg = c.get('Config') or {}
+    host = c.get('HostConfig') or {}
+    nets = ((c.get('NetworkSettings') or {}).get('Networks') or {})
+    return jsonify({
+        'id': (c.get('Id') or '')[:12],
+        'name': (c.get('Name') or '').lstrip('/'),
+        'image': cfg.get('Image'),
+        'image_id': (c.get('Image') or '').replace('sha256:', '')[:12],
+        'created': c.get('Created'),
+        'state': {
+            'status': state.get('Status'),
+            'running': state.get('Running'),
+            'exit_code': state.get('ExitCode'),
+            'started_at': state.get('StartedAt'),
+            'finished_at': state.get('FinishedAt'),
+            'health': ((state.get('Health') or {}).get('Status')),
+        },
+        'restart_policy': (host.get('RestartPolicy') or {}).get('Name', ''),
+        'cmd': cfg.get('Cmd'),
+        'entrypoint': cfg.get('Entrypoint'),
+        'env': cfg.get('Env') or [],
+        'tty': cfg.get('Tty', False),
+        'ports': _dk_ports([
+            {'IP': b.get('HostIp'), 'PublicPort': int(b.get('HostPort') or 0),
+             'PrivatePort': int(spec.split('/')[0]), 'Type': spec.split('/')[-1]}
+            for spec, binds in ((c.get('NetworkSettings') or {}).get('Ports') or {}).items()
+            for b in (binds or [{}])
+        ]),
+        'mounts': [{'type': m.get('Type'),
+                    'source': m.get('Name') or m.get('Source'),
+                    'destination': m.get('Destination'),
+                    'rw': m.get('RW', True)} for m in c.get('Mounts') or []],
+        'networks': {name: {'ip': (n or {}).get('IPAddress', '')}
+                     for name, n in nets.items()},
+        'labels': cfg.get('Labels') or {},
+        'compose_project': (cfg.get('Labels') or {}).get('com.docker.compose.project', ''),
+    })
+
+
+@bp.route('/api/docker/containers/<cid>/logs')
+def dk_container_logs(cid):
+    if not RE_DK_NAME.match(cid):
+        return err('Invalid container id')
+    try:
+        tail = int(request.args.get('tail', 200))
+    except ValueError:
+        return err('tail must be a number')
+    tail = max(1, min(tail, 10000))
+    try:
+        insp = docker_request('GET', '/containers/%s/json' % cid)
+        status, raw = docker_raw(
+            'GET', '/containers/%s/logs?stdout=1&stderr=1&tail=%d' % (cid, tail))
+    except DockerError as e:
+        return _dk_error_response(e)
+    if status >= 400:
+        try:
+            msg = json.loads(raw).get('message')
+        except ValueError:
+            msg = None
+        return err(msg or 'Could not read logs (HTTP %d)' % status,
+                   status if 400 <= status < 600 else 500)
+    if not ((insp.get('Config') or {}).get('Tty')):
+        raw = _dk_demux_logs(raw)
+    return jsonify({'logs': raw.decode('utf-8', 'replace'), 'tail': tail})
+
+
+@bp.route('/api/docker/containers/<cid>/stats')
+def dk_container_stats(cid):
+    if not RE_DK_NAME.match(cid):
+        return err('Invalid container id')
+    try:
+        # stream=false takes two samples ~1s apart so the CPU delta is real.
+        s = docker_request('GET', '/containers/%s/stats?stream=false' % cid,
+                           timeout=15)
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify(_dk_stats_summary(s))
+
+
+@bp.route('/api/docker/containers/<cid>/action', methods=['POST'])
+def dk_container_action(cid):
+    if not RE_DK_NAME.match(cid):
+        return err('Invalid container id')
+    data = request.get_json() or {}
+    action = data.get('action', '')
+    if action not in DK_CONTAINER_ACTIONS:
+        return err('Action must be one of: %s'
+                   % ', '.join(sorted(DK_CONTAINER_ACTIONS)))
+    path = '/containers/%s/%s' % (cid, action)
+    if action in ('stop', 'restart'):
+        path += '?t=10'
+    try:
+        docker_request('POST', path, timeout=90)
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True})
+
+
+# ─── Recreate ─────────────────────────────────────────────────────────
+# A container is bound to the image it was created from: pulling moves the
+# tag, a restart starts the same old image again. Applying a pulled image
+# means REPLACING the container. Two ways, picked per container:
+#   compose — `docker compose up -d --no-deps <service>` when the container
+#             carries compose labels AND the service user can read every
+#             compose file (compose owns the definition; it is the authority).
+#   clone   — everything else, including compose stacks whose files this
+#             user cannot read: a new container from the old one's own
+#             inspect data, old one parked under another name until the new
+#             one is seen running, put back if it is not.
+DK_RECREATE_METHODS = {'auto', 'compose', 'clone'}
+DK_RECREATE_SETTLE_S = 3       # how long the replacement must stay up
+# Config keys a container merely INHERITS from its image when it does not
+# set them. Sent back verbatim they would pin the OLD image's entrypoint /
+# command / healthcheck onto the new one.
+_DK_INHERITED = ('Cmd', 'Entrypoint', 'WorkingDir', 'User', 'StopSignal', 'Healthcheck', 'Shell')
+_DK_COMPOSE_LBL = 'com.docker.compose.'
+
+
+def _dk_compose_target(labels):
+    """(stack, service) when `docker compose` can recreate this container as
+    the service user, else None. `stack` is the dict _compose_args takes."""
+    labels = labels or {}
+    project = labels.get(_DK_COMPOSE_LBL + 'project') or ''
+    service = labels.get(_DK_COMPOSE_LBL + 'service') or ''
+    wd = labels.get(_DK_COMPOSE_LBL + 'project.working_dir') or ''
+    files = [f for f in (labels.get(_DK_COMPOSE_LBL + 'project.config_files') or '').split(',') if f]
+    if not (re.match(r'^[a-z0-9][a-z0-9_-]{0,62}\Z', project) and RE_DK_NAME.match(service)):
+        return None
+    if not (wd and os.path.isdir(wd) and files and all(os.access(f, os.R_OK) for f in files)):
+        return None
+    return {'name': project, 'working_dir': wd, 'config_files': files}, service
+
+
+def _dk_recreate_body(info, old_image):
+    """(create-body, extra-networks) for a replacement of the inspected
+    container `info`. `old_image` is the inspect of the image it runs now —
+    what it shares with that image is inheritance, not configuration, and is
+    left out so the NEW image supplies it."""
+    cfg = dict(info.get('Config') or {})
+    host = dict(info.get('HostConfig') or {})
+    icfg = old_image.get('Config') or {}
+    for k in _DK_INHERITED:
+        if cfg.get(k) == icfg.get(k):
+            cfg.pop(k, None)
+    inherited_env = set(icfg.get('Env') or [])
+    cfg['Env'] = [e for e in cfg.get('Env') or [] if e not in inherited_env]
+    ilabels = icfg.get('Labels') or {}
+    cfg['Labels'] = {k: v for k, v in (cfg.get('Labels') or {}).items() if ilabels.get(k) != v}
+    cfg.pop('MacAddress', None)                 # generated per endpoint; the top-level field is deprecated
+    short = (info.get('Id') or '')[:12]
+    if cfg.get('Hostname') == short:            # the default hostname IS the old id
+        cfg.pop('Hostname', None)
+    mode = host.get('NetworkMode') or ''
+    if mode.startswith('container:'):           # shares another container's stack: these conflict
+        for k in ('Hostname', 'Domainname', 'ExposedPorts'):
+            cfg.pop(k, None)
+        host['PortBindings'] = {}
+    # Anonymous volumes (an image VOLUME nobody named) are not in Binds — a
+    # replacement would get fresh empty ones. Carry them over by name.
+    binds = list(host.get('Binds') or [])
+    taken = {b.split(':')[1] for b in binds if b.count(':') >= 1}
+    taken |= {m.get('Target') for m in host.get('Mounts') or []}
+    for m in info.get('Mounts') or []:
+        if m.get('Type') == 'volume' and m.get('Name') and m.get('Destination') not in taken:
+            binds.append('%s:%s%s' % (m['Name'], m['Destination'], '' if m.get('RW', True) else ':ro'))
+    host['Binds'] = binds
+    endpoints = {}
+    if mode not in ('host', 'none') and not mode.startswith('container:'):
+        for name, n in ((info.get('NetworkSettings') or {}).get('Networks') or {}).items():
+            n = n or {}
+            ep = {k: n[k] for k in ('IPAMConfig', 'Links', 'DriverOpts') if n.get(k)}
+            aliases = [a for a in n.get('Aliases') or [] if a != short]
+            if aliases:
+                ep['Aliases'] = aliases
+            endpoints[name] = ep
+    # One network at create (every API version takes that), the rest connected
+    # before start.
+    primary = mode if mode in endpoints else next(iter(endpoints), None)
+    body = cfg
+    body['HostConfig'] = host
+    if primary:
+        body['NetworkingConfig'] = {'EndpointsConfig': {primary: endpoints.pop(primary)}}
+    return body, sorted(endpoints.items())
+
+
+def _dk_recreate_clone(info, ref):
+    """Replace the container with one created from `ref` and the old one's
+    own settings. Returns (new_id, warning). The old container is renamed
+    out of the way, not removed, until the new one has stayed up — any
+    failure puts it back and raises."""
+    old_id = info.get('Id') or ''
+    name = (info.get('Name') or '').lstrip('/')
+    was_running = bool((info.get('State') or {}).get('Running'))
+    old_image = docker_request('GET', '/images/%s/json' % urllib.parse.quote(info.get('Image') or '', safe=''))
+    body, extra_nets = _dk_recreate_body(info, old_image)
+    body['Image'] = ref
+    parked = '%s-replaced-%d' % (name[:100], int(time.time()))
+    if was_running:
+        docker_request('POST', '/containers/%s/stop?t=10' % old_id, timeout=90)
+    new_id = None
+
+    def put_back(why):
+        try:
+            if new_id:
+                docker_request('DELETE', '/containers/%s?force=1' % new_id, timeout=60)
+            docker_request('POST', '/containers/%s/rename?%s' % (old_id, urllib.parse.urlencode({'name': name})))
+            if was_running:
+                docker_request('POST', '/containers/%s/start' % old_id, timeout=90)
+        except DockerError as e2:
+            return DockerError(500, '%s — and putting the previous container back FAILED (%s). It is %s; '
+                                    'look at it by hand.' % (why, e2.message, old_id[:12]))
+        return DockerError(500, '%s — the previous container was put back%s.'
+                           % (why, ' and is running again' if was_running else ''))
+
+    try:
+        docker_request('POST', '/containers/%s/rename?%s' % (old_id, urllib.parse.urlencode({'name': parked})))
+    except DockerError as e:
+        if was_running:
+            docker_request('POST', '/containers/%s/start' % old_id, timeout=90)
+        raise DockerError(e.status, 'Could not move the old container aside: %s' % e.message)
+    try:
+        created = docker_request('POST', '/containers/create?%s' % urllib.parse.urlencode({'name': name}), body=body)
+        new_id = created.get('Id') or ''
+        for net, ep in extra_nets:
+            docker_request('POST', '/networks/%s/connect' % urllib.parse.quote(net, safe=''),
+                           body={'Container': new_id, 'EndpointConfig': ep})
+        if was_running:
+            docker_request('POST', '/containers/%s/start' % new_id, timeout=90)
+    except DockerError as e:
+        raise put_back('The replacement could not be created or started: %s' % e.message)
+    if was_running:
+        time.sleep(DK_RECREATE_SETTLE_S)
+        try:
+            st = docker_request('GET', '/containers/%s/json' % new_id).get('State') or {}
+        except DockerError as e:
+            raise put_back('The replacement could not be inspected: %s' % e.message)
+        if not st.get('Running') or st.get('Restarting'):
+            tail = ''
+            try:
+                _, raw = docker_raw('GET', '/containers/%s/logs?stdout=1&stderr=1&tail=15' % new_id)
+                tail = _dk_demux_logs(raw).decode('utf-8', 'replace').strip()[-1500:]
+            except DockerError:
+                pass
+            raise put_back('The replacement did not stay up (exit code %s)%s'
+                           % (st.get('ExitCode'), ': ' + tail if tail else ''))
+    warning = None
+    try:
+        # No v=1: named AND anonymous volumes stay — the new container uses them.
+        docker_request('DELETE', '/containers/%s' % old_id, timeout=60)
+    except DockerError as e:
+        warning = 'Recreated, but the previous container could not be removed (%s) — it is kept as %s.' % (e.message, parked)
+    return new_id[:12], warning
+
+
+@bp.route('/api/docker/containers/<cid>/recreate', methods=['POST'])
+def dk_container_recreate(cid):
+    if not RE_DK_NAME.match(cid):
+        return err('Invalid container id')
+    method = (request.get_json() or {}).get('method') or 'auto'
+    if method not in DK_RECREATE_METHODS:
+        return err('method must be one of: %s' % ', '.join(sorted(DK_RECREATE_METHODS)))
+    try:
+        info = docker_request('GET', '/containers/%s/json' % cid)
+        cfg = info.get('Config') or {}
+        ref = (cfg.get('Image') or '').strip()
+        if not RE_DK_IMAGE.match(ref) or ref.startswith('sha256:'):
+            return err('This container was created from an image id, not a tag — there is nothing newer to move it to')
+        try:
+            target = docker_request('GET', '/images/%s/json' % urllib.parse.quote(ref, safe=''))
+        except DockerError as e:
+            if e.status == 404:
+                return err('%s is not on this host — pull it first' % ref)
+            raise
+        if target.get('Id') == info.get('Image'):
+            return err('This container already runs the image %s points at — nothing to apply' % ref)
+        compose = _dk_compose_target(cfg.get('Labels'))
+        if method == 'compose' and not compose:
+            return err('Not a compose service whose files the dashboard user can read')
+        if compose and method != 'clone':
+            from . import docker_compose as dc          # imports this module: must stay local
+            stack, service = compose
+            out, errout, rc = run(dc._compose_args(stack, ['up', '-d', '--no-deps', service]),
+                                  no_sudo=True, timeout=600)
+            if rc != 0:
+                return err((errout or out).strip()[-2000:] or 'docker compose up failed', 500)
+            return jsonify({'success': True, 'method': 'compose',
+                            'detail': (errout or out).strip()[-2000:]})
+        new_id, warning = _dk_recreate_clone(info, ref)
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True, 'method': 'clone', 'id': new_id, 'warning': warning})
+
+
+@bp.route('/api/docker/containers/<cid>/delete', methods=['POST'])
+def dk_container_delete(cid):
+    if not RE_DK_NAME.match(cid):
+        return err('Invalid container id')
+    data = request.get_json() or {}
+    q = urllib.parse.urlencode({
+        'force': '1' if data.get('force') else '0',
+        'v': '1' if data.get('volumes') else '0',
+    })
+    try:
+        docker_request('DELETE', '/containers/%s?%s' % (cid, q))
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Images
+# ═══════════════════════════════════════════════════════════════════════
+
+@bp.route('/api/docker/images')
+def dk_images_list():
+    try:
+        imgs = docker_request('GET', '/images/json')
+        cts = docker_request('GET', '/containers/json?all=1')
+    except DockerError as e:
+        return _dk_error_response(e)
+    in_use = {c.get('ImageID') for c in cts}
+    out = []
+    for i in imgs:
+        tags = [t for t in (i.get('RepoTags') or []) if t != '<none>:<none>']
+        out.append({
+            'id': (i.get('Id') or '').replace('sha256:', '')[:12],
+            'tags': tags,
+            'dangling': not tags,
+            'size': i.get('Size', 0),
+            'created': i.get('Created', 0),
+            'in_use': i.get('Id') in in_use,
+        })
+    out.sort(key=lambda x: -(x['created'] or 0))
+    return jsonify(out)
+
+
+# ─── Image update checker ─────────────────────────────────────────────
+# For every container: the digest its image tag currently resolves to at the
+# registry vs the digest that was pulled (RepoDigests). What people install
+# Watchtower or diun for, minus the auto-restart. Registry answers are cached
+# per ref (30 min) so the page can re-render without re-asking; `refresh=1`
+# bypasses. Digest-pinned refs and locally built images are reported as such.
+_UPD_CACHE = {}          # ref -> {'ts', 'digest', 'error'}
+_UPD_LOCK = threading.Lock()
+UPD_CACHE_S = 1800
+
+
+def _remote_digest_cached(ref, refresh=False):
+    now = time.time()
+    with _UPD_LOCK:
+        hit = _UPD_CACHE.get(ref)
+        if hit and not refresh and now - hit['ts'] < UPD_CACHE_S:
+            return hit['digest'], hit['error'], True
+    host, repo, tag, digest = reg.parse_ref(ref)
+    if digest:
+        d, e = digest, None
+    else:
+        d, e = reg.remote_digest(host, repo, tag)
+    with _UPD_LOCK:
+        _UPD_CACHE[ref] = {'ts': now, 'digest': d, 'error': e}
+    return d, e, False
+
+
+def _moved_tag_ref(c):
+    """The tag a container was created from, when its list entry names the
+    image by ID. Pulling (or rebuilding) a tag moves it to the new image and
+    leaves the one a running container holds untagged, so the list shows a
+    bare sha256 — the container's own config still carries the tag. None
+    when it cannot be read or the container really was created from an id."""
+    if not (c.get('Image') or '').startswith('sha256:'):
+        return None
+    try:
+        info = docker_request('GET', '/containers/%s/json' % (c.get('Id') or '')[:12], timeout=10)
+    except DockerError:
+        return None
+    ref = ((info.get('Config') or {}).get('Image') or '').strip()
+    return ref if RE_DK_IMAGE.match(ref) and not ref.startswith('sha256:') else None
+
+
+def _image_update_rows(containers, refresh=False):
+    """Per-container rows; registry lookups run in parallel (stdlib pool)."""
+    moved = {c.get('Id'): t for c in containers for t in [_moved_tag_ref(c)] if t}
+    refs = sorted({c.get('Image') for c in containers if c.get('Image') and not c.get('Image', '').startswith('sha256:')}
+                  | set(moved.values()))
+    local = {}
+    for ref in refs:
+        try:
+            local[ref] = docker_request('GET', '/images/%s/json' % urllib.parse.quote(ref, safe=''), timeout=10)
+        except DockerError as e:
+            local[ref] = {'_error': e.message}
+    # A locally built/loaded image has no RepoDigests — nothing at any
+    # registry to compare, so do not even ask (docker.io answers 401 for a
+    # repo it has never heard of, which read as an error).
+    ask = [r for r in refs if (local.get(r) or {}).get('RepoDigests') or '_error' in (local.get(r) or {})]
+    remote = {r: (None, None, False) for r in refs}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        remote.update(dict(zip(ask, pool.map(lambda r: _remote_digest_cached(r, refresh), ask))))
+    rows = []
+    for c in containers:
+        tagref = moved.get(c.get('Id'))
+        ref = tagref or c.get('Image') or ''
+        row = {'id': (c.get('Id') or '')[:12], 'name': (c.get('Names') or ['/?'])[0].lstrip('/'),
+               'image': ref, 'state': c.get('State'), 'status': 'unknown', 'detail': ''}
+        li = local.get(ref) or {}
+        # A short id in the container's config resolves to the very image it
+        # runs: created from an id after all, no tag to follow.
+        if ref.startswith('sha256:') or ref not in remote or (tagref and li.get('Id') == c.get('ImageID')):
+            row.update({'image': c.get('Image') or '', 'detail': 'image referenced by id, not a tag'})
+            rows.append(row)
+            continue
+        if tagref and '_error' in li:
+            row['detail'] = 'created from %s, which is no longer on this host' % tagref
+            rows.append(row)
+            continue
+        host, repo, tag, digest = reg.parse_ref(ref)
+        rd, err_, cached = remote[ref]
+        row.update({'registry': host, 'tag': tag, 'cached': cached})
+        if digest:
+            row.update({'status': 'pinned', 'detail': 'pinned to a digest — never moves'})
+        elif '_error' in li:
+            row['detail'] = li['_error']
+        elif not li.get('RepoDigests'):
+            row.update({'status': 'local', 'detail': 'locally built or loaded image — nothing to compare'})
+        elif err_:
+            row['detail'] = err_
+        else:
+            st = reg.compare(li.get('RepoDigests'), rd)
+            row['status'] = st
+            row['remote_digest'] = rd[:19] if rd else None
+            row['detail'] = ('the %s tag has moved at %s — pull and recreate' % (tag, host) if st == 'update'
+                             else 'up to date' if st == 'current' else 'locally built or loaded image — nothing to compare')
+        # The tag is on this host as a DIFFERENT image than the one running.
+        # True whatever the registry said, so only a pending pull outranks it.
+        if tagref and row['status'] != 'update':
+            origin = 'pulled' if li.get('RepoDigests') else 'built'
+            row.update({'status': 'recreate', 'origin': origin,
+                        'via': 'compose' if _dk_compose_target(c.get('Labels')) else 'clone',
+                        'detail': '%s was %s after this container was created — recreate the container '
+                                  'to run the new image (a restart keeps the old one)'
+                                  % (ref, 'pulled' if origin == 'pulled' else 'rebuilt')})
+        rows.append(row)
+    return rows
+
+
+@bp.route('/api/docker/updates')
+def dk_image_updates():
+    refresh = request.args.get('refresh') in ('1', 'true')
+    try:
+        cts = docker_request('GET', '/containers/json?all=1')
+    except DockerError as e:
+        return _dk_error_response(e)
+    rows = _image_update_rows(cts, refresh)
+    return jsonify({'containers': rows,
+                    'updates': sum(1 for r in rows if r['status'] == 'update'),
+                    'recreate': sum(1 for r in rows if r['status'] == 'recreate'),
+                    'checked_at': int(time.time())})
+
+
+@bp.route('/api/docker/images/pull', methods=['POST'])
+def dk_image_pull():
+    ref = ((request.get_json() or {}).get('reference') or '').strip()
+    if not RE_DK_IMAGE.match(ref):
+        return err('Invalid image reference')
+    try:
+        _dk_pull(ref)
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True})
+
+
+@bp.route('/api/docker/images/delete', methods=['POST'])
+def dk_image_delete():
+    data = request.get_json() or {}
+    ref = (data.get('id') or '').strip()
+    # An id (hex) or a repo:tag reference — both are accepted by the API.
+    if not RE_DK_IMAGE.match(ref):
+        return err('Invalid image reference')
+    q = 'force=1' if data.get('force') else 'force=0'
+    try:
+        docker_request('DELETE',
+                       '/images/%s?%s' % (urllib.parse.quote(ref, safe=''), q))
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True})
+
+
+@bp.route('/api/docker/images/prune', methods=['POST'])
+def dk_images_prune():
+    try:
+        res = docker_request('POST', '/images/prune')
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True,
+                    'reclaimed': res.get('SpaceReclaimed', 0),
+                    'deleted': len(res.get('ImagesDeleted') or [])})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Volumes
+# ═══════════════════════════════════════════════════════════════════════
+
+@bp.route('/api/docker/volumes')
+def dk_volumes_list():
+    try:
+        vols = docker_request('GET', '/volumes')
+        cts = docker_request('GET', '/containers/json?all=1')
+    except DockerError as e:
+        return _dk_error_response(e)
+    used_by = {}
+    for c in cts:
+        cname = (c.get('Names') or ['/?'])[0].lstrip('/')
+        for m in c.get('Mounts') or []:
+            if m.get('Type') == 'volume' and m.get('Name'):
+                used_by.setdefault(m['Name'], []).append(cname)
+    return jsonify([{
+        'name': v.get('Name'),
+        'driver': v.get('Driver'),
+        'mountpoint': v.get('Mountpoint'),
+        'created': v.get('CreatedAt'),
+        'used_by': sorted(used_by.get(v.get('Name'), [])),
+    } for v in (vols.get('Volumes') or [])])
+
+
+@bp.route('/api/docker/volumes/create', methods=['POST'])
+def dk_volume_create():
+    name = ((request.get_json() or {}).get('name') or '').strip()
+    if not RE_DK_NAME.match(name):
+        return err('Invalid volume name')
+    try:
+        docker_request('POST', '/volumes/create', body={'Name': name})
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True})
+
+
+@bp.route('/api/docker/volumes/delete', methods=['POST'])
+def dk_volume_delete():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not RE_DK_NAME.match(name):
+        return err('Invalid volume name')
+    q = 'force=1' if data.get('force') else 'force=0'
+    try:
+        docker_request('DELETE', '/volumes/%s?%s' % (name, q))
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Networks
+# ═══════════════════════════════════════════════════════════════════════
+
+@bp.route('/api/docker/networks')
+def dk_networks_list():
+    try:
+        nets = docker_request('GET', '/networks')
+        cts = docker_request('GET', '/containers/json?all=1')
+    except DockerError as e:
+        return _dk_error_response(e)
+    attached = {}
+    for c in cts:
+        for name in ((c.get('NetworkSettings') or {}).get('Networks') or {}):
+            attached[name] = attached.get(name, 0) + 1
+    out = []
+    for n in nets:
+        subnets = [c.get('Subnet') for c in ((n.get('IPAM') or {}).get('Config') or [])
+                   if c.get('Subnet')]
+        out.append({
+            'id': (n.get('Id') or '')[:12],
+            'name': n.get('Name'),
+            'driver': n.get('Driver'),
+            'scope': n.get('Scope'),
+            'internal': n.get('Internal', False),
+            'subnets': subnets,
+            'containers': attached.get(n.get('Name'), 0),
+            'builtin': n.get('Name') in DK_BUILTIN_NETWORKS,
+        })
+    out.sort(key=lambda x: (not x['builtin'], x['name'] or ''))
+    return jsonify(out)
+
+
+@bp.route('/api/docker/networks/create', methods=['POST'])
+def dk_network_create():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    subnet = (data.get('subnet') or '').strip()
+    if not RE_DK_NAME.match(name):
+        return err('Invalid network name')
+    if name in DK_BUILTIN_NETWORKS:
+        return err('That name is reserved by Docker')
+    if subnet and not RE_DK_SUBNET.match(subnet):
+        return err('Subnet must be IPv4 CIDR, e.g. 172.30.0.0/16')
+    body = {'Name': name, 'Driver': 'bridge'}
+    if subnet:
+        body['IPAM'] = {'Driver': 'default', 'Config': [{'Subnet': subnet}]}
+    try:
+        docker_request('POST', '/networks/create', body=body)
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True})
+
+
+@bp.route('/api/docker/networks/delete', methods=['POST'])
+def dk_network_delete():
+    name = ((request.get_json() or {}).get('name') or '').strip()
+    if not RE_DK_NAME.match(name):
+        return err('Invalid network name')
+    if name in DK_BUILTIN_NETWORKS:
+        return err("Docker's built-in '%s' network cannot be deleted" % name)
+    try:
+        docker_request('DELETE', '/networks/%s' % name)
+    except DockerError as e:
+        return _dk_error_response(e)
+    return jsonify({'success': True})
+
+
+# ─── Module descriptor (consumed by core.registry at create_app) ───────
+MODULE = {'id': 'docker', 'order': 180, 'label': 'Docker', 'category': 'Docker',
+          'nav': {'cat': 'docker', 'cat_order': 60, 'pages': [
+                  {'id': 'docker', 'label': 'Containers & Images', 'icon': 'pkg'}]},
+          'blueprint': bp, 'summary': _docker_summary,
+          # The module drives containers over the socket; the service manager
+          # controls the daemon itself. pkg=None (the package name varies:
+          # docker-ce / docker.io / moby-engine), so presence is inferred from
+          # the unit file or binary. alert=False: absent on most nodes by design.
+          'services': {'docker': {'name': 'Docker', 'service': 'docker', 'pkg': None,
+                                  'binary': '/usr/bin/docker', 'alert': False}}}

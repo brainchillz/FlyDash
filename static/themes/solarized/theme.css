@@ -1,0 +1,146 @@
+/* Solarized Paper — built from the mockup of the same name; see THEMES.md for the
+   contract. Every rule is scoped to html[data-theme="solarized"]. */
+@font-face { font-family: 'Source Serif 4'; font-style: normal; font-weight: 600; font-display: swap; src: url(source-serif-4-600-latin.woff2) format('woff2'); }
+@font-face { font-family: 'Source Sans 3'; font-style: normal; font-weight: 400 600; font-display: swap; src: url(source-sans-3-400-latin.woff2) format('woff2'); }
+@font-face { font-family: 'Source Code Pro'; font-style: normal; font-weight: 400 500; font-display: swap; src: url(source-code-pro-400-latin.woff2) format('woff2'); }
+html[data-theme="solarized"] {
+  color-scheme: dark;
+  --bg: #002b36;
+  --sidebar-bg: #002b36;
+  --card-bg: #073642;
+  --border: #2a4f58;
+  --border-soft: #0d3a46;
+  --text: #93a1a1;
+  --text-muted: #657b83;
+  --primary: #268bd2;
+  --primary-hover: #2aa198;
+  --on-primary: #fdf6e3;
+  --green: #859900;
+  --yellow: #b58900;
+  --red: #dc322f;
+  --radius: 2px;
+  --nav-active: rgba(38,139,210,.14);
+  --card-hover: rgba(147,161,161,.06);
+  --row-hover: rgba(147,161,161,.06);
+  --overlay: rgba(0,43,54,.7);
+  --raw-bg: #00212b;
+  --sans: 'Source Sans 3','Source Sans Pro',system-ui,sans-serif;
+  --mono: 'Source Code Pro',ui-monospace,Menlo,monospace;
+  --display: 'Source Serif 4',Georgia,serif;
+  --emph: #eee8d5;
+  --violet: #6c71c4;
+  --orange: #cb4b16;
+  --hover: rgba(147,161,161,.07);
+  --hover-soft: rgba(147,161,161,.06);
+  --well: rgba(0,0,0,.2);
+  --raw-fg: #93a1a1;
+  --console-bg: #002b36;
+  --knob: #eee8d5;
+  --on-yellow: #002b36;
+  --red-hover: #c42b28;
+  --yellow-hover: #9f7900;
+}
+html[data-theme="solarized"].theme-light {
+  color-scheme: light;
+  --bg: #fdf6e3;
+  --sidebar-bg: #fdf6e3;
+  --card-bg: #fffbf0;
+  --border: #d9d2bd;
+  --border-soft: #eee8d5;
+  --text: #657b83;
+  --text-muted: #93a1a1;
+  --primary: #268bd2;
+  --primary-hover: #2aa198;
+  --on-primary: #fdf6e3;
+  --green: #859900;
+  --yellow: #b58900;
+  --red: #dc322f;
+  --nav-active: rgba(38,139,210,.1);
+  --card-hover: rgba(0,43,54,.03);
+  --row-hover: rgba(0,43,54,.04);
+  --overlay: rgba(0,43,54,.35);
+  --raw-bg: #eee8d5;
+  --emph: #586e75;
+  --hover: rgba(0,43,54,.04);
+  --hover-soft: rgba(0,43,54,.04);
+  --well: rgba(0,43,54,.04);
+  --raw-fg: #586e75;
+  --console-bg: #002b36;
+  --knob: #fdf6e3;
+  --on-yellow: #fdf6e3;
+  --red-hover: #c42b28;
+  --yellow-hover: #9f7900;
+}
+html[data-theme="solarized"] body { font-family:var(--sans);font-size:14.5px }
+html[data-theme="solarized"] .sidebar-header h1,
+html[data-theme="solarized"] .content h2,
+html[data-theme="solarized"] .login-box h1,
+html[data-theme="solarized"] .modal-header h3,
+html[data-theme="solarized"] .pool-name { font-family:var(--display);font-weight:600;color:var(--emph) }
+html[data-theme="solarized"] .sidebar-header h1 { font-size:15px }
+html[data-theme="solarized"] .content h2 { font-size:24px;letter-spacing:0;margin-bottom:20px }
+html[data-theme="solarized"] .content h3,
+html[data-theme="solarized"] .modal-body h3,
+html[data-theme="solarized"] .card-head,
+html[data-theme="solarized"] .table thead th,
+html[data-theme="solarized"] .nav-cat { font-family:var(--sans);font-variant-caps:all-small-caps;text-transform:none;letter-spacing:.12em;font-weight:600;font-size:13px }
+html[data-theme="solarized"] .content h3::after,
+html[data-theme="solarized"] .modal-body h3::after { border-top:1px solid var(--border) }
+html[data-theme="solarized"] .nav-cat { color:var(--text-muted) }
+html[data-theme="solarized"] .nav-list a { color:var(--text);font-size:13.5px;border-left-width:2px }
+html[data-theme="solarized"] .nav-list a.active { color:var(--emph);font-weight:600 }
+html[data-theme="solarized"] .machine-strip { border-bottom:1px solid var(--border);color:var(--text-muted) }
+html[data-theme="solarized"] .machine-strip .ms-host { color:var(--emph) }
+html[data-theme="solarized"] .cards { gap:0;background:transparent;border:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);overflow:visible }
+html[data-theme="solarized"] .cards>.card { border-right:1px solid var(--border-soft);background:transparent;padding:14px 16px }
+html[data-theme="solarized"] .cards>.card:last-child { border-right:0 }
+html[data-theme="solarized"] .card,
+html[data-theme="solarized"] .pool-card { background:transparent;border:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);border-radius:0 }
+html[data-theme="solarized"] .card-head { color:var(--text-muted) }
+html[data-theme="solarized"] .card-value { font-family:var(--mono);font-weight:500;color:var(--emph);font-size:24px }
+html[data-theme="solarized"] .card-sub,
+html[data-theme="solarized"] .card-unit,
+html[data-theme="solarized"] .pool-stats { color:var(--text-muted) }
+html[data-theme="solarized"] .health-ok,
+html[data-theme="solarized"] .upd-flag,
+html[data-theme="solarized"] .alert { border-radius:0;border:0;border-left:3px solid var(--green);background:transparent;padding-left:12px }
+html[data-theme="solarized"] .upd-flag { border-left-color:var(--yellow) }
+html[data-theme="solarized"] .btn { background:var(--primary);color:var(--on-primary);border-radius:2px;font-family:var(--sans);font-weight:600;letter-spacing:.02em }
+html[data-theme="solarized"] .btn-outline,
+html[data-theme="solarized"] .table .btn,
+html[data-theme="solarized"] .btn.sso-btn { background:transparent;border:1px solid var(--border);color:var(--emph) }
+html[data-theme="solarized"] .btn-outline:hover,
+html[data-theme="solarized"] .table .btn:hover { border-color:var(--primary);color:var(--primary) }
+html[data-theme="solarized"] .btn-warning { background:var(--yellow);color:var(--bg) }
+html[data-theme="solarized"] .btn-danger { background:var(--red) }
+html[data-theme="solarized"] .form-control { border-radius:2px;border:1px solid var(--border);background:var(--card-bg);color:var(--emph) }
+html[data-theme="solarized"] .form-control:focus { border-color:var(--primary);box-shadow:0 0 0 2px rgba(38,139,210,.25) }
+html[data-theme="solarized"] .usage-bar { height:4px;border:0;background:var(--border-soft);border-radius:0 }
+html[data-theme="solarized"] .usage-bar-fill.green { background:var(--primary) }
+html[data-theme="solarized"] .usage-pct { color:var(--text-muted) }
+html[data-theme="solarized"] .status-badge { font-family:var(--sans);text-transform:none;font-size:12.5px }
+html[data-theme="solarized"] .status-badge::before,
+html[data-theme="solarized"] .status-dot { border-radius:50%;width:7px;height:7px }
+html[data-theme="solarized"] .table { font-size:13.5px }
+html[data-theme="solarized"] .table thead th { border-bottom:1px solid var(--emph);color:var(--emph) }
+html[data-theme="solarized"] .table tbody td { border-bottom:1px solid var(--border-soft) }
+html[data-theme="solarized"] .table td.num,
+html[data-theme="solarized"] .mono { font-family:var(--mono);font-size:13px }
+html[data-theme="solarized"] .spark-line { stroke:var(--primary) }
+html[data-theme="solarized"] .spark-area { fill:var(--primary) }
+html[data-theme="solarized"] .modal { border-radius:2px;box-shadow:none }
+html[data-theme="solarized"] .modal-header { border-bottom:1px solid var(--border) }
+html[data-theme="solarized"] #login-screen { background:var(--bg) }
+html[data-theme="solarized"] .login-box { background:transparent;border:0;border-top:3px double var(--emph);border-radius:0;padding:28px 0 }
+html[data-theme="solarized"] .login-box h1 { font-size:26px }
+html[data-theme="solarized"] .sso-sep { color:var(--text-muted) }
+html[data-theme="solarized"] .sso-sep::before,
+html[data-theme="solarized"] .sso-sep::after { border-top:1px solid var(--border) }
+
+/* ── colophon (theme.js inserts it) ── */
+html[data-theme="solarized"] body { flex-wrap: wrap; align-content: flex-start; }
+html[data-theme="solarized"] .sidebar { height: calc(100vh - 27px); position: sticky; top: 0; }
+html[data-theme="solarized"] .nav-list { overflow-y: auto; min-height: 0; }
+html[data-theme="solarized"] .main-col { height: calc(100vh - 27px); max-height: none; }
+html[data-theme="solarized"] .solar-colophon { flex-basis: 100%; order: 99; font-family: var(--sans); font-variant-caps: all-small-caps; letter-spacing: .14em; font-size: 12px; color: var(--text-muted); padding: 6px 28px; border-top: 1px solid var(--border); background: var(--bg); }
+

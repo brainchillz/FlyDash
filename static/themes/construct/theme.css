@@ -1,0 +1,131 @@
+/* Construct — the Hive console (AI-Dashboard) applied to the Nexus shell.
+   Fonts are self-hosted (OFL) so no request leaves the network. Every rule is
+   scoped to html[data-theme="construct"] so nothing bleeds while a swap is
+   in flight. theme.js adds the glyph rain and the CRT overlays. */
+@font-face { font-family: 'Share Tech Mono'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(share-tech-mono-latin.woff2) format('woff2'); }
+@font-face { font-family: 'VT323'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url(vt323-latin.woff2) format('woff2'); }
+
+html[data-theme="construct"] {
+  color-scheme: dark;
+  --bg: #020603; --sidebar-bg: #030a05; --card-bg: #030a05;
+  --border: #0a3d14; --border-soft: #082a10;
+  --text: #c8ffd4; --text-muted: #17b83c;
+  --primary: #00ff41; --primary-hover: #e8ffe8; --on-primary: #020603;
+  --green: #00ff41; --yellow: #ffd23f; --red: #ff2a2a;
+  --on-yellow: #020603; --red-hover: #ff5c5c; --yellow-hover: #ffe08a;
+  --hover: rgba(0,255,65,.07); --hover-soft: rgba(0,255,65,.04);
+  --well: rgba(0,0,0,.4); --overlay: rgba(0,0,0,.72);
+  --raw-bg: #010302; --raw-fg: #9ff5b4; --console-bg: #010302; --knob: #e8ffe8;
+  --radius: 0;
+  --glow: rgba(0,255,65,.6); --scan: rgba(0,0,0,.26); --vignette: rgba(0,0,0,.5);
+  --rain-rgb: 0,255,65; --rain-head: #e8ffe8; --rain-side: .22; --rain-login: .55;
+  --mono: 'Share Tech Mono', ui-monospace, Menlo, Consolas, monospace;
+  --sans: var(--mono);
+  --display: 'VT323', var(--mono);
+}
+/* Light: a green-ink printout — same faces, the glow and CRT fade to paper. */
+html[data-theme="construct"].theme-light {
+  color-scheme: light;
+  --bg: #edf4e6; --sidebar-bg: #f5faf0; --card-bg: #f5faf0;
+  --border: #8fbd8f; --border-soft: #c3dbbf;
+  --text: #0b2e14; --text-muted: #2a7a3b;
+  --primary: #0b7a2a; --primary-hover: #064d1a; --on-primary: #ffffff;
+  --green: #0b7a2a; --yellow: #8a6400; --red: #b3201a;
+  --on-yellow: #ffffff; --red-hover: #8c1813; --yellow-hover: #6b4e00;
+  --hover: rgba(11,122,42,.08); --hover-soft: rgba(11,122,42,.05);
+  --well: rgba(11,122,42,.06); --overlay: rgba(10,40,16,.45);
+  --raw-bg: #e2ecda; --raw-fg: #0b2e14; --console-bg: #0b2e14; --knob: #ffffff;
+  --glow: rgba(11,122,42,.3); --scan: rgba(0,40,10,.06); --vignette: rgba(0,30,8,.16);
+  --rain-rgb: 11,122,42; --rain-head: #0b2e14; --rain-side: .1; --rain-login: .3;
+}
+
+/* ── Terminal face everywhere, uppercase display headings in VT323 ── */
+html[data-theme="construct"] .btn,
+html[data-theme="construct"] .form-control { font-family: var(--mono); }
+html[data-theme="construct"] .content h2 { font-family: var(--display); font-size: 30px; font-weight: 400; text-transform: uppercase; letter-spacing: .04em; line-height: 1; text-shadow: 0 0 7px var(--glow); }
+html[data-theme="construct"] .nav-cat { letter-spacing: .18em; font-weight: 400; }
+html[data-theme="construct"] .card-head,
+html[data-theme="construct"] .table thead th { font-weight: 400; letter-spacing: .14em; }
+html[data-theme="construct"] .card-value,
+html[data-theme="construct"] .card .big { font-family: var(--display); font-size: 34px; font-weight: 400; line-height: .95; margin: 6px 0 4px; text-shadow: 0 0 7px var(--glow); }
+html[data-theme="construct"] .card-unit { font-family: var(--mono); }
+html[data-theme="construct"] .login-box h1 { font-family: var(--display); font-size: 34px; font-weight: 400; text-transform: uppercase; line-height: 1; text-shadow: 0 0 7px var(--glow); }
+html[data-theme="construct"] .pool-name { font-family: var(--display); font-size: 24px; line-height: 1; text-shadow: 0 0 7px var(--glow); }
+html[data-theme="construct"] .modal-header h3 { font-family: var(--display); font-size: 24px; font-weight: 400; text-transform: uppercase; }
+html[data-theme="construct"] .stat-v { font-family: var(--display); font-size: 1.9em; font-weight: 400; }
+
+/* ── Phosphor bloom on the hot elements only ── */
+html[data-theme="construct"] .machine-strip .ms-host,
+html[data-theme="construct"] .nav-list a.active,
+html[data-theme="construct"] .subtitle strong { text-shadow: 0 0 7px var(--glow); }
+html[data-theme="construct"] .status-badge.green,
+html[data-theme="construct"] .health-ok { text-shadow: 0 0 6px var(--glow); }
+html[data-theme="construct"] .usage-bar-fill.green { box-shadow: 0 0 6px var(--glow); }
+
+/* ── Terminal punctuation: [ buttons ], > section labels ── */
+html[data-theme="construct"] .btn { background: transparent; color: var(--primary); border: 1px solid var(--border); font-weight: 400; }
+html[data-theme="construct"] .btn::before { content: '[ '; }
+html[data-theme="construct"] .btn::after { content: ' ]'; }
+html[data-theme="construct"] .btn:hover { background: transparent; color: var(--text); border-color: var(--primary); box-shadow: 0 0 10px var(--glow); }
+html[data-theme="construct"] .btn-danger { color: var(--red); background: transparent; }
+html[data-theme="construct"] .btn-danger:hover { border-color: var(--red); background: transparent; }
+html[data-theme="construct"] .btn-warning { color: var(--yellow); background: transparent; }
+html[data-theme="construct"] .btn-warning:hover { border-color: var(--yellow); background: transparent; }
+html[data-theme="construct"] .btn-success { color: var(--green); background: transparent; }
+html[data-theme="construct"] .btn-outline,
+html[data-theme="construct"] .table .btn,
+html[data-theme="construct"] .btn.sso-btn { color: var(--text-muted); }
+html[data-theme="construct"] .btn-outline:hover,
+html[data-theme="construct"] .table .btn:hover { color: var(--text); }
+html[data-theme="construct"] .content h3::before,
+html[data-theme="construct"] .modal-body h3::before,
+html[data-theme="construct"] .nav-cat::before { content: '> '; letter-spacing: 0; }
+html[data-theme="construct"] .nav-cat { justify-content: flex-start; gap: 6px; }
+html[data-theme="construct"] .nav-cat .caret { margin-left: auto; }
+html[data-theme="construct"] .nav-list a.active::before { content: '>'; margin-right: -3px; }
+html[data-theme="construct"] .health-ok::before { content: '> '; }
+html[data-theme="construct"] .modal-close { font-family: var(--mono); font-size: 13px; }
+html[data-theme="construct"] .modal-close::before { content: '[ x ]'; }
+html[data-theme="construct"] .modal-close { font-size: 0; }
+html[data-theme="construct"] .modal-close::before { font-size: 13px; }
+
+/* ── The machine strip opens with a shell prompt and ends on a live cursor ── */
+html[data-theme="construct"] .machine-strip { gap: 16px; }
+html[data-theme="construct"] .machine-strip .ms-host::before { content: 'operator@'; color: var(--text-muted); font-weight: 400; text-shadow: none; }
+html[data-theme="construct"] .machine-strip .ms-host::after { content: ':~$'; color: var(--text-muted); font-weight: 400; text-shadow: none; }
+html[data-theme="construct"] .machine-strip .ms-right::after { content: '\2588'; margin-left: 8px; color: var(--primary); animation: construct-cursor 1s steps(1) infinite; }
+@keyframes construct-cursor { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+/* ── Dashed inner dividers (solid outer frame, dashed inside) ── */
+html[data-theme="construct"] .table tbody td { border-bottom-style: dashed; }
+html[data-theme="construct"] .content h3::after,
+html[data-theme="construct"] .modal-body h3::after { border-top-style: dashed; }
+html[data-theme="construct"] .sidebar-header { border-bottom-style: dashed; }
+html[data-theme="construct"] .sidebar-footer { border-top-style: dashed; }
+html[data-theme="construct"] .modal-header { border-bottom-style: dashed; }
+html[data-theme="construct"] .zfs-vdev { border-left: 1px dashed var(--border); margin-left: 4px; padding-left: 12px; }
+
+/* ── Rain canvases (theme.js inserts them) sit under the content ── */
+html[data-theme="construct"] .sidebar,
+html[data-theme="construct"] #login-screen { position: relative; isolation: isolate; }
+html[data-theme="construct"] #login-screen { position: fixed; }
+html[data-theme="construct"] .construct-rain { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+html[data-theme="construct"] .sidebar .construct-rain { opacity: var(--rain-side); }
+html[data-theme="construct"] #login-screen .construct-rain { opacity: var(--rain-login); }
+html[data-theme="construct"] .sidebar-header,
+html[data-theme="construct"] .sidebar-footer { background: var(--sidebar-bg); }
+html[data-theme="construct"] .login-box { box-shadow: 0 0 40px rgba(0,0,0,.6); }
+
+/* ── CRT scanlines + vignette + the 9 s flicker (theme.js inserts the overlays) ── */
+html[data-theme="construct"] .construct-crt,
+html[data-theme="construct"] .construct-vig { position: fixed; inset: 0; pointer-events: none; z-index: 3000; }
+html[data-theme="construct"] .construct-crt { background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0 2px, var(--scan) 2px 3px); }
+html[data-theme="construct"] .construct-vig { background: radial-gradient(ellipse at center, rgba(0,0,0,0) 58%, var(--vignette) 100%); }
+html[data-theme="construct"] body { animation: construct-flicker 9s linear infinite; }
+@keyframes construct-flicker { 0%, 100% { opacity: 1; } 91% { opacity: 1; } 92% { opacity: .86; } 93% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="construct"] body { animation: none; }
+  html[data-theme="construct"] .machine-strip .ms-right::after { animation: none; }
+}

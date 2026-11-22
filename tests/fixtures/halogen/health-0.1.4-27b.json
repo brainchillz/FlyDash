@@ -1,0 +1,114 @@
+{
+    "status": "ok",
+    "model": "halogen-qwen3.8-27b",
+    "version": {
+        "api": "0.1.4",
+        "engine": "0.1.4",
+        "match": true
+    },
+    "endpoints": [
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/models"
+    ],
+    "context": 262144,
+    "busy": true,
+    "slots": 1,
+    "slot_ctx": 262144,
+    "in_flight": 1,
+    "busy_for_s": 216.8,
+    "queued": 0,
+    "decode": "greedy",
+    "drafters_available": [
+        "serial",
+        "mtp",
+        "dflash2"
+    ],
+    "drafters_greedy_only": [],
+    "drafter_default": "dflash2",
+    "shortlist_draft_head": true,
+    "drafter_weights_loaded": true,
+    "prompt_cache": {
+        "enabled": true,
+        "cap_mb": 61990,
+        "snapshot_align": 2048,
+        "bitwise_identical_to_cold": true
+    },
+    "tool_calls": {
+        "wire_format": "qwen-xml (<function=>/<parameter=>)",
+        "streaming": true,
+        "tool_choice": [
+            "auto",
+            "none",
+            "required",
+            "{type: function, function: {name}}"
+        ],
+        "forced_call_is_a_prefill": true,
+        "required_is_exact": "named tool_choice, or one tool",
+        "parallel_tool_calls": true,
+        "constrained_decoding": false,
+        "forced_call_disables_thinking": true,
+        "argument_types_need_schema": true
+    },
+    "supported": [
+        "reasoning_effort",
+        "enable_thinking",
+        "preserve_thinking",
+        "tools",
+        "tool_choice",
+        "parallel_tool_calls",
+        "stop",
+        "max_tokens",
+        "max_completion_tokens",
+        "max_output_tokens",
+        "stream",
+        "stream_options",
+        "chat_template_kwargs"
+    ],
+    "chat_template_kwargs": [
+        "reasoning_effort",
+        "enable_thinking",
+        "preserve_thinking"
+    ],
+    "token_budget_aliases": [
+        "max_tokens",
+        "max_completion_tokens",
+        "max_output_tokens"
+    ],
+    "max_tokens_default": 8192,
+    "error_format": "openai",
+    "accepted_but_ignored": [
+        "n"
+    ],
+    "not_implemented": [
+        "response_format"
+    ],
+    "sampling": {
+        "implemented": [
+            "temperature",
+            "top_p",
+            "top_k",
+            "min_p",
+            "seed",
+            "presence_penalty",
+            "frequency_penalty",
+            "logit_bias",
+            "logprobs"
+        ],
+        "sampler_only": "presence_penalty, frequency_penalty, logit_bias and logprobs are REJECTED without temperature>0 rather than ignored",
+        "top_logprobs": "not implemented; logprobs returns the chosen token only",
+        "temperature_0": "greedy; keeps the speculative fast path and is byte-identical",
+        "temperature_gt_0": "sampled, and it KEEPS the speculative fast path: accept min(1,p/q) with a residual correction, so the emitted distribution is exactly p. Measured 2.1-2.3x serial-sampled",
+        "seed_absent": "a random seed is drawn; the request is then not reproducible"
+    },
+    "max_tokens_cap": 65536,
+    "max_tokens_over_cap": "400",
+    "reasoning_effort_values": [
+        "high",
+        "low",
+        "medium",
+        "minimal",
+        "none",
+        "xhigh"
+    ]
+}

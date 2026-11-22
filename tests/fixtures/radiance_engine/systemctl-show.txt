@@ -1,0 +1,14 @@
+Id=radiance-flashnext.service
+Conflicts=vllm-qwen.service llama-server.service shutdown.target affinity-deepseek.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+FragmentPath=/etc/systemd/system/radiance-flashnext.service
+DropInPaths=
+UnitFileState=enabled
+ActiveEnterTimestamp=Sat 2026-10-24 05:14:12 UTC
+MainPID=302274
+NRestarts=0
+ExecStart={ path=/home/backupuser/radiance/run.sh ; argv[]=/home/backupuser/radiance/run.sh --model /model.rad --tp 4 --tp-wire wht6 --p2p on --placement all_vram --ngram-placement ram --gpu-headroom-mib 128 --max-model-len 262144 --kv-cache-dtype fp8 --num-speculative-tokens 3 --max-num-batched-tokens 2048 --max-num-seqs 16 --reasoning-effort-map high=xhigh --served-model-name qwen3.8-flash-next --host 0.0.0.0 --port 8300 ; ignore_errors=no ; start_time=[Sat 2026-10-24 05:14:12 UTC] ; stop_time=[n/a] ; pid=302274 ; code=(null) ; status=0/0 }
+ExecStop={ path=/usr/bin/docker ; argv[]=/usr/bin/docker stop -t 30 radiance-tp4 ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+Environment=HOME=/home/backupuser GPUS=0,1,2,3 NAME=radiance-tp4 IMAGE=stilldeadcode/radiance:latest

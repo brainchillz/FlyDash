@@ -1,0 +1,239 @@
+/* ─── FlyDash desktop shell ────────────────────────────────────────────
+   The desktop layer: wallpaper, desktop icons, widgets, windows, launcher
+   and taskbar. Every colour comes from a token in style.css (the --desk-*
+   group), so themes restyle the shell exactly as they restyle a page.
+   The pages themselves render inside a window's .win-pane with the same
+   .content rules they always had. */
+
+body.desktop { display: block; min-height: 100vh; overflow: hidden; }
+
+/* Wallpaper: under everything, login screen included. */
+#wallpaper {
+  position: fixed; inset: 0; z-index: 0;
+  background: var(--bg) center / cover no-repeat;
+  transition: background-image 0.3s ease;
+}
+/* The login box floats over the wallpaper behind a soft scrim. */
+body.desktop #login-screen { background: var(--desk-scrim); backdrop-filter: blur(2px); }
+
+#desktop { position: fixed; inset: 0; z-index: 1; overflow: hidden; font-size: 13px; }
+
+/* ─── Desktop icons: a column that wraps into the next one ─── */
+#desk-icons {
+  position: absolute; left: 12px; top: 12px; bottom: calc(var(--desk-taskbar-h) + 12px);
+  display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; gap: 4px 6px;
+  z-index: 2;
+}
+.dicon {
+  width: 88px; padding: 8px 4px 7px; border: 1px solid transparent; border-radius: 4px;
+  background: transparent; color: var(--desk-icon-text); font: inherit; font-size: 11.5px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: default;
+  text-shadow: var(--desk-icon-shadow); user-select: none;
+}
+.dicon:hover { background: var(--desk-icon-hover); }
+.dicon.sel { background: var(--desk-icon-sel); border-color: var(--desk-glass-border); }
+.dicon:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.dicon .ib {
+  width: 50px; height: 50px; border-radius: 11px;
+  background: var(--desk-glass); border: 1px solid var(--desk-glass-border);
+  display: flex; align-items: center; justify-content: center; color: var(--primary);
+  box-shadow: var(--desk-icon-box-shadow);
+}
+.dicon .ib .ico { width: 26px; height: 26px; stroke-width: 1.8; }
+.dicon span.lbl { line-height: 1.2; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+/* ─── Widgets (top right) ─── */
+#desk-widgets { position: absolute; right: 16px; top: 14px; display: flex; flex-direction: column; gap: 10px; z-index: 2; width: 292px; }
+.widget {
+  background: var(--desk-glass); border: 1px solid var(--desk-glass-border); border-radius: 4px;
+  padding: 12px 14px; backdrop-filter: blur(10px); box-shadow: var(--desk-win-shadow-soft);
+}
+.widget .wt {
+  display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
+}
+.widget .wt strong { color: var(--text); font-weight: 600; letter-spacing: 0.01em; text-transform: none; font-size: 12px; }
+.widget .wt > span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.widget .wrow { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; }
+.widget .wrow .k { width: 58px; flex: none; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.widget .wrow.link { cursor: pointer; border-radius: 3px; margin: 0 -6px; padding: 4px 6px; }
+.widget .wrow.link:hover { background: var(--hover); }
+.widget .wrow .usage { flex: 1; margin: 0; }
+.widget .wline { font-size: 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; font-family: var(--mono); }
+.widget .wline.ok { color: var(--green); }
+.widget .wline.warn { color: var(--yellow); cursor: pointer; }
+.widget .wline .ico { width: 13px; height: 13px; }
+
+/* ─── Windows ─── */
+#desk-windows { position: absolute; inset: 0 0 var(--desk-taskbar-h) 0; z-index: 3; pointer-events: none; }
+.win {
+  position: absolute; display: flex; flex-direction: column; overflow: hidden; pointer-events: auto;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 4px;
+  box-shadow: var(--desk-win-shadow); min-width: 420px; min-height: 280px;
+}
+.win.inactive { box-shadow: var(--desk-win-shadow-soft); border-color: var(--border-soft); }
+.win.inactive .win-title { color: var(--text-muted); }
+.win.inactive .win-title .ico { color: var(--text-muted); }
+.win.max { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; border-width: 0 0 1px 0; }
+.win.min { display: none; }
+.win.dragging, .win.dragging * { user-select: none; cursor: grabbing !important; }
+.win.dragging .win-pane, .win.resizing .win-pane { pointer-events: none; }
+
+.win-title {
+  height: 36px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 12px;
+  background: var(--sidebar-bg); border-bottom: 1px solid var(--border); user-select: none; cursor: default;
+}
+.win-title .ico { width: 15px; height: 15px; color: var(--primary); }
+.win-title .win-name { font-weight: 600; font-size: 12.5px; letter-spacing: 0.01em; }
+.win-title .win-sub { color: var(--text-muted); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.win-title .win-sub::before { content: '›'; margin-right: 8px; color: var(--border); }
+.win-btn {
+  width: 30px; height: 26px; border: 0; border-radius: 3px; background: transparent; color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.win-btn .ico { width: 13px; height: 13px; color: inherit; }
+.win-btn:hover { background: var(--hover); color: var(--text); }
+.win-btn.x:hover { background: var(--red); color: var(--on-primary); }
+.win-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+.win-body { flex: 1; display: flex; min-height: 0; }
+.win-rail {
+  width: 184px; flex: none; background: var(--sidebar-bg); border-right: 1px solid var(--border);
+  padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto;
+}
+.win-rail .grp { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); padding: 12px 10px 4px; font-weight: 600; }
+.win-rail .grp:first-child { padding-top: 4px; }
+.rail-item {
+  display: flex; align-items: center; gap: 9px; padding: 8px 10px; width: 100%; text-align: left;
+  border: 0; border-radius: 3px; background: transparent; color: var(--text-muted); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.rail-item .ico { width: 15px; height: 15px; }
+.rail-item:hover { background: var(--hover); color: var(--text); }
+.rail-item.sel { background: var(--desk-rail-sel); color: var(--primary); }
+.rail-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+body.readonly .rail-item.admin-only { display: none; }
+.win-pane { flex: 1; min-width: 0; overflow: auto; }
+.win-pane.content { padding: 18px 22px; }
+.win-pane .page-inner { min-height: 100%; }
+.win-pane .console-term { height: 50vh; }
+/* Terminal app: the page IS the window body — no padding, no page scroll,
+   the screen takes whatever the window gives it. */
+.win-pane:has(.term-page) { padding: 0; overflow: hidden; }
+.win-pane:has(.term-page) .page-inner { height: 100%; }
+.term-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.term-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.term-bar input { width: 170px; }
+.term-status { margin-left: auto; color: var(--text-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term-intro { padding: 18px 22px; max-width: 640px; }
+.term-intro p { margin: 0 0 10px; line-height: 1.5; }
+.term-screen { flex: 1; min-height: 0; background: var(--console-bg); padding: 6px 4px 4px 8px; overflow: hidden; }
+
+.win-resize {
+  position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--border) 50%, var(--border) 60%, transparent 60%, transparent 75%, var(--border) 75%, var(--border) 85%, transparent 85%);
+}
+.win.max .win-resize { display: none; }
+
+/* ─── Taskbar ─── */
+#taskbar {
+  position: absolute; left: 0; right: 0; bottom: 0; height: var(--desk-taskbar-h); z-index: 10;
+  display: flex; align-items: center; gap: 4px; padding: 0 10px;
+  background: var(--desk-taskbar); border-top: 1px solid var(--desk-glass-border); backdrop-filter: blur(14px);
+}
+.tb {
+  height: 42px; min-width: 44px; padding: 0 11px; border: 0; border-radius: 4px; background: transparent; color: var(--text);
+  display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; position: relative; font: inherit; font-size: 12px;
+}
+.tb .ico { width: 20px; height: 20px; stroke-width: 1.8; }
+.tb:hover { background: var(--hover); }
+.tb:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.tb.run::after { content: ''; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--text-muted); }
+.tb.act { background: var(--desk-rail-sel); }
+.tb.act::after { background: var(--primary); width: 16px; height: 3px; margin-left: -8px; border-radius: 2px; }
+.tb.launch { color: var(--primary); }
+.tb.launch.on { background: var(--desk-rail-sel); }
+.tb-sep { width: 1px; height: 28px; background: var(--desk-glass-border); margin: 0 6px; }
+.tray { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.tray-item {
+  height: 42px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted);
+  display: flex; align-items: center; gap: 8px; font: inherit; font-size: 12px; cursor: default;
+}
+button.tray-item { cursor: pointer; }
+button.tray-item:hover { background: var(--hover); color: var(--text); }
+.tray-item .ico { width: 17px; height: 17px; }
+.tray-item .host { color: var(--text); font-weight: 600; }
+.tray-item.clock { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tray-item .cnt { background: var(--yellow); color: var(--on-yellow); font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 6px; }
+.tray-item .cnt.crit { background: var(--red); color: var(--on-primary); }
+
+/* Tray popup menu (account) */
+#tray-menu {
+  position: absolute; right: 10px; bottom: calc(var(--desk-taskbar-h) + 8px); z-index: 20; min-width: 220px;
+  background: var(--desk-glass-solid); border: 1px solid var(--border); border-radius: 4px; box-shadow: var(--desk-win-shadow); padding: 6px;
+}
+#tray-menu .mi {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 3px;
+  background: transparent; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+#tray-menu .mi:hover { background: var(--hover); }
+#tray-menu .mi .ico { width: 15px; height: 15px; color: var(--text-muted); }
+#tray-menu .mh { padding: 6px 10px 8px; font-size: 11px; color: var(--text-muted); border-bottom: 1px solid var(--border-soft); margin-bottom: 4px; }
+#tray-menu .mh strong { color: var(--text); display: block; font-size: 12.5px; }
+
+/* ─── Launcher ─── */
+#launcher {
+  position: absolute; left: 10px; bottom: calc(var(--desk-taskbar-h) + 8px); width: 640px; max-width: calc(100vw - 20px); z-index: 20;
+  background: var(--desk-glass-solid); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: var(--desk-win-shadow); padding: 16px; backdrop-filter: blur(16px);
+}
+#launcher .lsearch {
+  width: 100%; box-sizing: border-box; padding: 9px 12px 9px 34px; border-radius: 3px; font: inherit; font-size: 13px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+}
+#launcher .lsearch-wrap { position: relative; }
+#launcher .lsearch-wrap .ico { position: absolute; left: 11px; top: 50%; margin-top: -7px; width: 14px; height: 14px; color: var(--text-muted); }
+#launcher .lhead { display: flex; justify-content: space-between; margin-top: 14px; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+#launcher .lgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.lapp {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 6px; border: 0; border-radius: 4px;
+  background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer;
+}
+.lapp:hover { background: var(--hover); }
+.lapp:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.lapp .ib { width: 44px; height: 44px; border-radius: 9px; background: var(--sidebar-bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--primary); }
+.lapp .ib .ico { width: 22px; height: 22px; stroke-width: 1.8; }
+.lapp.dim { color: var(--text-muted); }
+.lapp.dim .ib { color: var(--text-muted); }
+.lapp .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+#launcher .lempty { padding: 18px 6px; color: var(--text-muted); font-size: 12.5px; }
+
+/* ─── Appearance page: wallpaper picker ─── */
+.wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; max-width: 760px; }
+.wall-sw {
+  position: relative; height: 84px; border-radius: 4px; border: 2px solid var(--border); padding: 0; cursor: pointer; overflow: hidden;
+  background: var(--bg) center / cover no-repeat;
+}
+.wall-sw.sel { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.wall-sw .lbl { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--desk-icon-text); text-shadow: var(--desk-icon-shadow); }
+.wall-sw .src { position: absolute; right: 6px; top: 6px; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 5px; border-radius: 2px; background: var(--desk-glass); color: var(--text-muted); }
+.wall-sw .del {
+  position: absolute; right: 4px; bottom: 4px; width: 22px; height: 22px; border: 0; border-radius: 3px; display: none;
+  background: var(--desk-glass); color: var(--text); align-items: center; justify-content: center; cursor: pointer;
+}
+.wall-sw .del .ico { width: 12px; height: 12px; }
+.wall-sw:hover .del { display: flex; }
+.wall-sw .del:hover { background: var(--red); color: var(--on-primary); }
+.wall-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+
+/* ─── Small screens: windows fill the screen, icons shrink ─── */
+@media (max-width: 760px) {
+  .win { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; min-width: 0; min-height: 0; }
+  .win-rail { width: 140px; }
+  #desk-widgets { display: none; }
+  #launcher .lgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tray-item.host-item, .tray-item.clock { display: none; }
+}
+
+/* Single-section apps (SAN, Reverse Proxy, Overview) have no rail. */
+.win.norail .win-rail { display: none; }
+.win.norail .win-title .win-sub::before { display: none; }   /* keep the flex spacer */

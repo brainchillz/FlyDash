@@ -1,0 +1,190 @@
+/* Amiga Workbench — built from the mockup of the same name; see THEMES.md for the
+   contract. Every rule is scoped to html[data-theme="amiga"]. */
+@font-face { font-family: 'Pixelify Sans'; font-style: normal; font-weight: 400 600; font-display: swap; src: url(pixelify-sans-400-latin.woff2) format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url(ibm-plex-mono-400-latin.woff2) format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url(ibm-plex-mono-600-latin.woff2) format('woff2'); }
+html[data-theme="amiga"] {
+  color-scheme: dark;
+  --bg: #0055aa;
+  --sidebar-bg: #0055aa;
+  --card-bg: #0055aa;
+  --border: #ffffff;
+  --border-soft: #2d78c4;
+  --text: #ffffff;
+  --text-muted: #bcd2ea;
+  --primary: #ff8800;
+  --primary-hover: #ffa133;
+  --on-primary: #000000;
+  --green: #ffffff;
+  --yellow: #ff8800;
+  --red: #ff3b30;
+  --radius: 0;
+  --nav-active: #ff8800;
+  --card-hover: rgba(255,255,255,.08);
+  --row-hover: rgba(255,255,255,.12);
+  --overlay: rgba(0,0,0,.5);
+  --raw-bg: #003f80;
+  --pix: 'Pixelify Sans','VT323',monospace;
+  --mono: 'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  --sans: var(--mono);
+  --display: var(--pix);
+  --hi: #ffffff;
+  --sh: #000000;
+  --bar: #ffffff;
+  --bar-fg: #0055aa;
+  --orange: #ff8800;
+  --black: #000000;
+  --screen: #0055aa;
+  --dither: repeating-conic-gradient(#ff8800 0 25%,#0055aa 0 50%) 0 0/4px 4px;
+  --hover: rgba(255,255,255,.1);
+  --hover-soft: rgba(255,255,255,.12);
+  --well: rgba(0,0,0,.2);
+  --raw-fg: #ffffff;
+  --console-bg: #000000;
+  --knob: #ffffff;
+  --on-yellow: #000000;
+  --red-hover: #ff6a5c;
+  --yellow-hover: #ffa133;
+}
+html[data-theme="amiga"].theme-light {
+  color-scheme: light;
+  --bg: #aaaaaa;
+  --sidebar-bg: #aaaaaa;
+  --card-bg: #aaaaaa;
+  --border: #000000;
+  --border-soft: #7a7a7a;
+  --text: #000000;
+  --text-muted: #2a2a2a;
+  --primary: #6688bb;
+  --primary-hover: #7a9acc;
+  --on-primary: #ffffff;
+  --green: #2f7d2f;
+  --yellow: #8a6a00;
+  --red: #a8281e;
+  --nav-active: #6688bb;
+  --card-hover: rgba(255,255,255,.2);
+  --row-hover: rgba(255,255,255,.3);
+  --overlay: rgba(0,0,0,.35);
+  --raw-bg: #bdbdbd;
+  --hi: #ffffff;
+  --sh: #000000;
+  --bar: #6688bb;
+  --bar-fg: #ffffff;
+  --orange: #6688bb;
+  --black: #000000;
+  --screen: #aaaaaa;
+  --dither: repeating-conic-gradient(#6688bb 0 25%,#aaaaaa 0 50%) 0 0/4px 4px;
+  --hover: rgba(255,255,255,.25);
+  --hover-soft: rgba(255,255,255,.3);
+  --well: rgba(0,0,0,.06);
+  --raw-fg: #000000;
+  --console-bg: #000000;
+  --knob: #ffffff;
+  --on-yellow: #ffffff;
+  --red-hover: #8a1f17;
+  --yellow-hover: #5a7aa8;
+}
+html[data-theme="amiga"] body { font-family:var(--mono);font-size:13px }
+html[data-theme="amiga"] .sidebar { border-right:0;box-shadow:inset -1px 0 0 var(--sh),inset -2px 0 0 var(--hi) }
+html[data-theme="amiga"] .sidebar-header { border-bottom:0;box-shadow:inset 0 -1px 0 var(--sh),inset 0 -2px 0 var(--hi) }
+html[data-theme="amiga"] .sidebar-header h1,
+html[data-theme="amiga"] .content h2,
+html[data-theme="amiga"] .nav-cat,
+html[data-theme="amiga"] .card-head,
+html[data-theme="amiga"] .table thead th,
+html[data-theme="amiga"] .btn,
+html[data-theme="amiga"] .login-box h1,
+html[data-theme="amiga"] .modal-header h3,
+html[data-theme="amiga"] .pool-name,
+html[data-theme="amiga"] .form-group label,
+html[data-theme="amiga"] .content h3,
+html[data-theme="amiga"] .modal-body h3,
+html[data-theme="amiga"] .sso-sep { font-family:var(--pix);text-transform:none;letter-spacing:0 }
+html[data-theme="amiga"] .sidebar-header h1 { font-size:16px;font-weight:400 }
+html[data-theme="amiga"] .subtitle strong { color:var(--primary) }
+html[data-theme="amiga"] .nav-cat { font-size:13px;color:var(--text);font-weight:400 }
+html[data-theme="amiga"] .nav-list a { color:var(--text);border-left:0;font-family:var(--pix);font-size:15px;padding:4px 16px }
+html[data-theme="amiga"] .nav-list a:not(.active):hover { background:var(--card-hover) }
+html[data-theme="amiga"] .nav-list a.active { background:var(--nav-active);color:var(--on-primary) }
+html[data-theme="amiga"] .nav-list a.active .ico { stroke:var(--on-primary) }
+html[data-theme="amiga"] .sidebar-footer { border-top:0;box-shadow:inset 0 1px 0 var(--sh),inset 0 2px 0 var(--hi) }
+html[data-theme="amiga"] .machine-strip { background:var(--bg);border-bottom:0;box-shadow:inset 0 -1px 0 var(--sh),inset 0 -2px 0 var(--hi);color:var(--text);font-size:12px }
+html[data-theme="amiga"] .machine-strip .ms-host { color:var(--primary) }
+html[data-theme="amiga"] .content h2 { font-size:22px;font-weight:400;color:var(--text) }
+html[data-theme="amiga"] .content h3,
+html[data-theme="amiga"] .modal-body h3 { font-size:14px;color:var(--text) }
+html[data-theme="amiga"] .content h3::after,
+html[data-theme="amiga"] .modal-body h3::after { border-top:1px solid var(--hi);box-shadow:0 1px 0 var(--sh) }
+html[data-theme="amiga"] .cards { gap:6px;background:transparent;border:0;overflow:visible }
+html[data-theme="amiga"] .cards>.card,
+html[data-theme="amiga"] .card,
+html[data-theme="amiga"] .pool-card,
+html[data-theme="amiga"] .health-ok,
+html[data-theme="amiga"] .upd-flag,
+html[data-theme="amiga"] .alert,
+html[data-theme="amiga"] .modal,
+html[data-theme="amiga"] .login-box { border:0;border-radius:0;background:var(--card-bg);box-shadow:inset 1px 1px 0 var(--hi),inset -1px -1px 0 var(--sh) }
+html[data-theme="amiga"] .card-head { color:var(--text);font-size:13px;font-weight:400 }
+html[data-theme="amiga"] .card-value { font-family:var(--pix);font-size:26px;font-weight:400;color:var(--text) }
+html[data-theme="amiga"] .card-sub,
+html[data-theme="amiga"] .card-unit,
+html[data-theme="amiga"] .pool-stats { color:var(--text-muted) }
+html[data-theme="amiga"] .health-ok { color:var(--text);border-left:4px solid var(--green) }
+html[data-theme="amiga"] .upd-flag { color:var(--primary);border-left:4px solid var(--primary) }
+html[data-theme="amiga"] .btn { border-radius:0;background:var(--bg);color:var(--text);border:0;box-shadow:inset 1px 1px 0 var(--hi),inset -1px -1px 0 var(--sh);font-size:15px;font-weight:400;padding:3px 14px }
+html[data-theme="amiga"] .btn:hover { background:var(--primary);color:var(--on-primary) }
+html[data-theme="amiga"] .btn:active { box-shadow:inset 1px 1px 0 var(--sh),inset -1px -1px 0 var(--hi) }
+html[data-theme="amiga"] .btn-danger { color:var(--red) }
+html[data-theme="amiga"] .btn-warning { color:var(--primary) }
+html[data-theme="amiga"] .btn-outline,
+html[data-theme="amiga"] .table .btn { border:0;color:var(--text) }
+html[data-theme="amiga"] .form-control { border:0;border-radius:0;background:var(--bg);color:var(--text);box-shadow:inset 1px 1px 0 var(--sh),inset -1px -1px 0 var(--hi) }
+html[data-theme="amiga"] .form-control:focus { outline:none;background:var(--black);color:#fff }
+html[data-theme="amiga"].theme-light .form-control { background:#fff;color:#000 }
+html[data-theme="amiga"] .usage-bar { height:10px;border:0;background:var(--bg);box-shadow:inset 1px 1px 0 var(--sh),inset -1px -1px 0 var(--hi) }
+html[data-theme="amiga"] .usage-bar-fill.green { background:var(--primary) }
+html[data-theme="amiga"] .usage-bar-fill.yellow { background:var(--dither) }
+html[data-theme="amiga"] .usage-pct { color:var(--text) }
+html[data-theme="amiga"] .status-badge { font-size:12px;text-transform:none }
+html[data-theme="amiga"] .status-badge::before,
+html[data-theme="amiga"] .status-dot { border-radius:0;box-shadow:inset 1px 1px 0 rgba(255,255,255,.7),inset -1px -1px 0 rgba(0,0,0,.6) }
+html[data-theme="amiga"] .table thead th { color:var(--text);font-size:13px;font-weight:400;border-bottom:1px solid var(--hi);box-shadow:0 1px 0 var(--sh) }
+html[data-theme="amiga"] .table tbody td { border-bottom:0 }
+html[data-theme="amiga"] .table tbody tr:hover td { background:var(--primary);color:var(--on-primary) }
+html[data-theme="amiga"] .table tbody tr:hover .status-badge,
+html[data-theme="amiga"] .table tbody tr:hover .btn { color:var(--on-primary) }
+html[data-theme="amiga"] .pool-name { font-size:20px;font-weight:400 }
+html[data-theme="amiga"] .spark-line { stroke:var(--primary) }
+html[data-theme="amiga"] .spark-area { fill:var(--primary) }
+html[data-theme="amiga"] .modal-header { border-bottom:0;background:var(--bar);color:var(--bar-fg) }
+html[data-theme="amiga"] .modal-header h3 { color:var(--bar-fg);font-weight:400;font-size:16px }
+html[data-theme="amiga"] .modal-close { color:var(--bar-fg) }
+html[data-theme="amiga"] #login-screen { background:var(--screen) }
+html[data-theme="amiga"] .login-box { border-top:0;padding:0 }
+html[data-theme="amiga"] .login-box::before { content:'Login';display:block;background:var(--bar);color:var(--bar-fg);font-family:var(--pix);font-size:14px;padding:0 8px;height:20px;line-height:20px;margin:1px 1px 18px;box-shadow:inset 0 -1px 0 var(--sh) }
+html[data-theme="amiga"] .login-box>*:not(:first-child) { margin-left:22px;margin-right:22px }
+html[data-theme="amiga"] .login-box { padding-bottom:22px }
+html[data-theme="amiga"] .login-box h1 { font-size:22px;font-weight:400 }
+
+/* ── screen bar, window bar, sizing bar (theme.js inserts them) ── */
+html[data-theme="amiga"] body { padding: 0 10px 10px; background: var(--screen); flex-wrap: wrap; align-content: flex-start; }
+html[data-theme="amiga"] .amiga-screenbar { flex-basis: calc(100% + 20px); margin: 0 -10px; order: -2; height: 20px; background: var(--bar); color: var(--bar-fg); font-family: var(--pix); font-size: 14px; display: flex; align-items: center; padding: 0 8px; gap: 16px; box-shadow: inset 0 -1px 0 var(--sh); white-space: nowrap; overflow: hidden; }
+html[data-theme="amiga"] .amiga-screenbar .sp, html[data-theme="amiga"] .amiga-titlebar .drag { flex: 1; }
+html[data-theme="amiga"] .amiga-gadget { width: 20px; height: 16px; position: relative; background: var(--bar); box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--sh); flex-shrink: 0; }
+html[data-theme="amiga"] .amiga-gadget::before, html[data-theme="amiga"] .amiga-gadget::after { content: ''; position: absolute; width: 9px; height: 7px; border: 1px solid var(--sh); background: var(--bar); }
+html[data-theme="amiga"] .amiga-gadget::before { left: 3px; top: 2px; } html[data-theme="amiga"] .amiga-gadget::after { left: 7px; top: 6px; background: var(--orange); }
+html[data-theme="amiga"] .amiga-titlebar { flex-basis: 100%; order: -1; margin-top: 8px; height: 20px; display: flex; align-items: center; gap: 8px; background: var(--bar); color: var(--bar-fg); font-family: var(--pix); font-size: 14px; box-shadow: inset 0 -1px 0 var(--sh), inset 1px 0 0 var(--hi); }
+html[data-theme="amiga"] .amiga-titlebar .close { width: 20px; height: 18px; margin: 1px; background: var(--bar); box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--sh); position: relative; flex-shrink: 0; }
+html[data-theme="amiga"] .amiga-titlebar .close::before { content: ''; position: absolute; left: 6px; top: 5px; width: 6px; height: 6px; border: 1px solid var(--sh); background: var(--orange); }
+html[data-theme="amiga"] .amiga-titlebar .drag { height: 100%; background: var(--dither); margin-left: 4px; }
+html[data-theme="amiga"] .amiga-titlebar .title { padding: 0 8px; background: var(--bar); white-space: nowrap; }
+html[data-theme="amiga"] .amiga-sizebar { flex-basis: 100%; order: 99; height: 18px; display: flex; justify-content: flex-end; background: var(--bg); box-shadow: inset 1px 0 0 var(--hi), inset -1px -1px 0 var(--sh); }
+html[data-theme="amiga"] .amiga-sizer { width: 20px; height: 18px; background: var(--bar); box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--sh); position: relative; }
+html[data-theme="amiga"] .amiga-sizer::before { content: ''; position: absolute; right: 4px; bottom: 4px; width: 8px; height: 6px; border: 1px solid var(--sh); border-left: 0; border-top: 0; background: var(--orange); }
+html[data-theme="amiga"] .sidebar { height: calc(100vh - 76px); position: sticky; top: 28px; box-shadow: inset 1px 0 0 var(--hi), inset -1px 0 0 var(--sh), inset -2px 0 0 var(--hi); }
+html[data-theme="amiga"] .nav-list { overflow-y: auto; min-height: 0; }
+html[data-theme="amiga"] .main-col { height: calc(100vh - 76px); max-height: none; background: var(--bg); box-shadow: inset -1px 0 0 var(--sh); }
+html[data-theme="amiga"] .nav-list a.active { background: var(--nav-active); }
+html[data-theme="amiga"] .login-box { padding: 0 0 22px; }
+html[data-theme="amiga"] .login-box > *:not(:first-child) { margin-left: 22px; margin-right: 22px; }
+

@@ -1,0 +1,25 @@
+[Unit]
+Description=Radiance: Qwen3.8-Flash-Next at TP=4 on all 4x R9700, port 8300
+# Needs all four cards: starting this stops whatever else holds them (Conflicts= works both ways).
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+Conflicts=vllm-qwen.service llama-server.service affinity-deepseek.service
+
+[Service]
+Type=simple
+User=backupuser
+Group=backupuser
+WorkingDirectory=/home/backupuser/radiance
+Environment=HOME=/home/backupuser
+Environment=GPUS=0,1,2,3 NAME=radiance-tp4 IMAGE=stilldeadcode/radiance:latest
+# The engine's flags live here on purpose: the dashboard's Radiance Engine page shows them read-only.
+# --p2p on: exit instead of silently staging through host memory. --gpu-headroom-mib 128: 96 warns on this box.
+ExecStart=/home/backupuser/radiance/run.sh --model /model.rad --tp 4 --tp-wire wht6 --p2p on --placement all_vram --ngram-placement ram --gpu-headroom-mib 128 --max-model-len 262144 --kv-cache-dtype fp8 --num-speculative-tokens 3 --max-num-batched-tokens 2048 --max-num-seqs 16 --reasoning-effort-map high=xhigh --served-model-name qwen3.8-flash-next --host 0.0.0.0 --port 8300
+ExecStop=/usr/bin/docker stop -t 30 radiance-tp4
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

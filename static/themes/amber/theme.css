@@ -1,0 +1,179 @@
+/* Amber Terminal — built from the mockup of the same name; see THEMES.md for the
+   contract. Every rule is scoped to html[data-theme="amber"]. */
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url(ibm-plex-mono-400-latin.woff2) format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url(ibm-plex-mono-600-latin.woff2) format('woff2'); }
+html[data-theme="amber"] {
+  color-scheme: dark;
+  --bg: #0c0905;
+  --sidebar-bg: #0c0905;
+  --card-bg: #0c0905;
+  --border: #8a5d00;
+  --border-soft: #4a3200;
+  --text: #ffb000;
+  --text-muted: #b07a10;
+  --primary: #ffb000;
+  --primary-hover: #ffd27a;
+  --on-primary: #0c0905;
+  --green: #ffb000;
+  --yellow: #ffe9b0;
+  --red: #ff5a3c;
+  --radius: 0;
+  --nav-active: #ffb000;
+  --card-hover: rgba(255,176,0,.08);
+  --row-hover: rgba(255,176,0,.12);
+  --overlay: rgba(0,0,0,.75);
+  --raw-bg: #090603;
+  --mono: 'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --sans: var(--mono);
+  --display: var(--mono);
+  --bar: #ffb000;
+  --bar-fg: #0c0905;
+  --field: #1a1208;
+  --hover: rgba(255,176,0,.1);
+  --hover-soft: rgba(255,176,0,.12);
+  --well: rgba(255,176,0,.06);
+  --raw-fg: #ffb000;
+  --console-bg: #0c0905;
+  --knob: #0c0905;
+  --on-yellow: #0c0905;
+  --red-hover: #ff7a60;
+  --yellow-hover: #fff1cc;
+}
+html[data-theme="amber"].theme-light {
+  color-scheme: light;
+  --bg: #f3f6ee;
+  --sidebar-bg: #eef3e8;
+  --card-bg: #f7f9f3;
+  --border: #7a7d6a;
+  --border-soft: #c6cbb8;
+  --text: #2b2a24;
+  --text-muted: #5e6052;
+  --primary: #2b2a24;
+  --primary-hover: #000;
+  --on-primary: #f3f6ee;
+  --green: #3d7a3d;
+  --yellow: #8a6a10;
+  --red: #a8322a;
+  --nav-active: #2b2a24;
+  --card-hover: rgba(0,0,0,.04);
+  --row-hover: rgba(0,0,0,.06);
+  --overlay: rgba(40,40,30,.4);
+  --raw-bg: #e8ecdf;
+  --bar: #2b2a24;
+  --bar-fg: #f3f6ee;
+  --field: #ffffff;
+  --hover: rgba(0,0,0,.05);
+  --hover-soft: rgba(0,0,0,.06);
+  --well: rgba(0,0,0,.04);
+  --raw-fg: #2b2a24;
+  --console-bg: #2b2a24;
+  --knob: #f3f6ee;
+  --on-yellow: #f3f6ee;
+  --red-hover: #8a2821;
+  --yellow-hover: #6f550d;
+}
+html[data-theme="amber"] body { font-family:var(--mono);text-transform:none }
+html[data-theme="amber"]:not(.theme-light) .content h2,
+html[data-theme="amber"]:not(.theme-light) .card-value,
+html[data-theme="amber"]:not(.theme-light) .machine-strip .ms-host { text-shadow:0 0 5px var(--glow) }
+html[data-theme="amber"].theme-light .content,
+html[data-theme="amber"].theme-light .modal-body { background:repeating-linear-gradient(180deg,#f3f6ee 0 24px,#dfe9d6 24px 48px) }
+html[data-theme="amber"].theme-light .sidebar { border-right:2px solid var(--border) }
+html[data-theme="amber"] .content h2,
+html[data-theme="amber"] .content h3,
+html[data-theme="amber"] .modal-body h3,
+html[data-theme="amber"] .card-head,
+html[data-theme="amber"] .table thead th,
+html[data-theme="amber"] .nav-cat,
+html[data-theme="amber"] .btn,
+html[data-theme="amber"] .form-group label,
+html[data-theme="amber"] .login-box h1,
+html[data-theme="amber"] .pool-name,
+html[data-theme="amber"] .modal-header h3,
+html[data-theme="amber"] .status-badge,
+html[data-theme="amber"] .upd-flag,
+html[data-theme="amber"] .health-ok,
+html[data-theme="amber"] .sidebar-header h1,
+html[data-theme="amber"] .sso-sep { text-transform:uppercase;letter-spacing:.08em }
+html[data-theme="amber"] .content h2 { font-weight:600;font-size:15px;border:3px double var(--border);padding:6px 12px;display:inline-block;margin-bottom:18px }
+html[data-theme="amber"] .content h3,
+html[data-theme="amber"] .modal-body h3 { color:var(--text);font-weight:600 }
+html[data-theme="amber"] .content h3::before,
+html[data-theme="amber"] .modal-body h3::before { content:'═══ ';letter-spacing:0 }
+html[data-theme="amber"] .content h3::after,
+html[data-theme="amber"] .modal-body h3::after { border-top:3px double var(--border) }
+html[data-theme="amber"] .cards { gap:8px;background:transparent;border:0;overflow:visible }
+html[data-theme="amber"] .cards>.card,
+html[data-theme="amber"] .card,
+html[data-theme="amber"] .pool-card,
+html[data-theme="amber"] .health-ok,
+html[data-theme="amber"] .upd-flag,
+html[data-theme="amber"] .alert,
+html[data-theme="amber"] .modal,
+html[data-theme="amber"] .login-box { border:3px double var(--border);border-radius:0;background:var(--card-bg) }
+html[data-theme="amber"] .card-head { color:var(--text-muted);font-weight:600 }
+html[data-theme="amber"] .card-value { font-weight:600;font-size:22px }
+html[data-theme="amber"] .sidebar { border-right:3px double var(--border) }
+html[data-theme="amber"] .sidebar-header { border-bottom:3px double var(--border) }
+html[data-theme="amber"] .sidebar-footer { border-top:3px double var(--border) }
+html[data-theme="amber"] .nav-cat { color:var(--text-muted);font-weight:600 }
+html[data-theme="amber"] .nav-list a { border-left:0;color:var(--text) }
+html[data-theme="amber"] .nav-list a::before { content:'  ';white-space:pre }
+html[data-theme="amber"] .nav-list a.active { background:var(--nav-active);color:var(--on-primary);text-shadow:none }
+html[data-theme="amber"] .nav-list a.active::before { content:'► ';white-space:pre }
+html[data-theme="amber"] .nav-list a.active .ico { stroke:var(--on-primary) }
+html[data-theme="amber"] .nav-list a:not(.active):hover { background:var(--card-hover) }
+html[data-theme="amber"] .machine-strip { border-bottom:3px double var(--border);font-family:var(--mono);color:var(--text);text-transform:uppercase;letter-spacing:.06em;font-size:11px }
+html[data-theme="amber"] .machine-strip .ms-right::after { content:'\2588';margin-left:8px;animation:amber-blink 1s steps(1) infinite }
+@keyframes amber-blink {0%,49%{opacity:1}50%,100%{opacity:0}}
+@media (prefers-reduced-motion:reduce) {
+html[data-theme="amber"] .machine-strip .ms-right::after { animation:amber-none }
+}
+html[data-theme="amber"] .btn { border-radius:0;background:transparent;color:var(--text);border:1px solid var(--text);font-weight:600;padding:4px 12px;font-family:var(--mono) }
+html[data-theme="amber"] .btn::before { content:'[' }
+html[data-theme="amber"] .btn::after { content:']' }
+html[data-theme="amber"] .btn:hover { background:var(--text);color:var(--on-primary) }
+html[data-theme="amber"] .btn-danger { color:var(--red);border-color:var(--red) }
+html[data-theme="amber"] .btn-danger:hover { background:var(--red);color:#fff }
+html[data-theme="amber"] .btn-warning { color:var(--yellow);border-color:var(--yellow) }
+html[data-theme="amber"] .btn-warning:hover { background:var(--yellow);color:var(--bg) }
+html[data-theme="amber"] .btn-outline,
+html[data-theme="amber"] .table .btn { color:var(--text-muted);border-color:var(--text-muted) }
+html[data-theme="amber"] .table .btn:hover { background:var(--text-muted);color:var(--bg) }
+html[data-theme="amber"] .form-control { border-radius:0;background:var(--field);border:1px solid var(--border);text-transform:none }
+html[data-theme="amber"] .form-control:focus { outline:none;border-color:var(--text);box-shadow:0 0 0 1px var(--text) }
+html[data-theme="amber"] .usage-bar { height:12px;border:1px solid var(--border);background:transparent;position:relative }
+html[data-theme="amber"] .usage-bar::after { content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 6px,var(--bg) 6px 8px) }
+html[data-theme="amber"] .usage-bar-fill { background:var(--text) }
+html[data-theme="amber"] .status-badge { font-size:11px }
+html[data-theme="amber"] .status-badge::before,
+html[data-theme="amber"] .status-dot { border-radius:0;width:8px;height:8px }
+html[data-theme="amber"] .table thead th { color:var(--text);border-bottom:3px double var(--border);font-weight:600;letter-spacing:.1em }
+html[data-theme="amber"] .table tbody td { border-bottom:1px dotted var(--border-soft) }
+html[data-theme="amber"] .table tbody tr:hover td { background:var(--text);color:var(--on-primary) }
+html[data-theme="amber"] .table tbody tr:hover .status-badge,
+html[data-theme="amber"] .table tbody tr:hover .btn { color:var(--on-primary);border-color:var(--on-primary);text-shadow:none }
+html[data-theme="amber"] .pool-name { font-weight:600 }
+html[data-theme="amber"] .pool-status,
+html[data-theme="amber"] .zfs-vdev,
+html[data-theme="amber"] .card-sub { text-transform:none }
+html[data-theme="amber"] .modal-header { border-bottom:3px double var(--border) }
+html[data-theme="amber"] #login-screen { background:var(--bg) }
+html[data-theme="amber"].theme-light #login-screen { background:repeating-linear-gradient(180deg,#f3f6ee 0 24px,#dfe9d6 24px 48px) }
+html[data-theme="amber"] .login-box { border-top:3px double var(--border);padding:24px 28px }
+html[data-theme="amber"] .login-box::before { content:'NEXUS/370  ONLINE  TERMINAL 0C1';display:block;font-size:10px;letter-spacing:.2em;color:var(--text-muted);margin-bottom:12px }
+html[data-theme="amber"] .login-box h1 { font-weight:600;font-size:16px }
+html[data-theme="amber"] .login-box .subtitle::before { content:'LU: ' }
+
+/* ── function-key bar + operator information area (theme.js inserts them) ── */
+html[data-theme="amber"] body { flex-wrap: wrap; align-content: flex-start; }
+html[data-theme="amber"] .sidebar { height: calc(100vh - 46px); position: sticky; top: 0; }
+html[data-theme="amber"] .nav-list { overflow-y: auto; min-height: 0; }
+html[data-theme="amber"] .main-col { height: calc(100vh - 46px); max-height: none; }
+html[data-theme="amber"] .amber-fkeys { flex-basis: 100%; order: 98; display: flex; border-top: 3px double var(--border); background: var(--bg); font-family: var(--mono); font-size: 11px; letter-spacing: .06em; overflow: hidden; padding: 4px 10px; text-transform: uppercase; color: var(--text); }
+html[data-theme="amber"] .amber-fkeys span { padding: 0 12px 0 0; white-space: nowrap; }
+html[data-theme="amber"] .amber-fkeys b { background: var(--bar); color: var(--bar-fg); padding: 0 4px; font-weight: 600; margin-right: 4px; }
+html[data-theme="amber"] .amber-oia { flex-basis: 100%; order: 99; display: flex; gap: 18px; font-family: var(--mono); font-size: 11px; letter-spacing: .1em; padding: 3px 10px; border-top: 1px solid var(--border-soft); color: var(--text-muted); white-space: nowrap; overflow: hidden; background: var(--bg); text-transform: uppercase; }
+html[data-theme="amber"] .amber-oia .sp { flex: 1; }
+html[data-theme="amber"] .nav-list a.active { background: var(--nav-active); }
+

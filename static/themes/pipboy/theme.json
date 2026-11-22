@@ -1,0 +1,18 @@
+{
+  "id": "pipboy",
+  "name": "Pip-Boy",
+  "description": "A wrist terminal: tab bar on top, inverted-block selection, segmented bars, boxed readouts along the bottom, bloom and scanlines inside a rounded bezel, one HUD colour at a time. Light mode is a cream paper manual.",
+  "author": "Nexus Dashboard",
+  "version": "1.0",
+  "modes": ["dark", "light"],
+  "variant_label": "HUD colour",
+  "variants": [
+    {"id": "green", "label": "Green"},
+    {"id": "amber", "label": "Amber"},
+    {"id": "blue",  "label": "Blue"},
+    {"id": "white", "label": "White"}
+  ],
+  "default_variant": "green",
+  "css": "theme.css",
+  "js": "theme.js"
+}

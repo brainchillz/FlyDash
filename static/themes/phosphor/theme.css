@@ -1,0 +1,29 @@
+/* Phosphor — a palette-only theme. Every structural rule in style.css stays;
+   only the token block changes. Tokens are keyed on html[data-theme] so they
+   outrank style.css's own html.theme-light block (same specificity, later
+   file), and the light block below outranks both. */
+html[data-theme="phosphor"] {
+  color-scheme: dark;
+  --bg: #070a08; --sidebar-bg: #0a0e0b; --card-bg: #0c110d;
+  --border: #1d2b20; --border-soft: #151f18;
+  --text: #cdd9cf; --text-muted: #73907a;
+  --primary: #36e05f; --primary-hover: #5ff083; --on-primary: #06110a;
+  --green: #7fc98d; --yellow: #d9b94a; --red: #e0574f;
+  --on-yellow: #140f04; --red-hover: #b8463f; --yellow-hover: #b89a3a;
+  --hover: rgba(54,224,95,.06); --hover-soft: rgba(54,224,95,.035);
+  --well: rgba(0,0,0,.3); --overlay: rgba(0,0,0,.65);
+  --raw-bg: #040605; --raw-fg: #b7c9bb; --console-bg: #040605; --knob: #dffbe6;
+}
+/* Light: pale green-grey paper, deep leaf green as the accent. */
+html[data-theme="phosphor"].theme-light {
+  color-scheme: light;
+  --bg: #eef2ec; --sidebar-bg: #f7f9f5; --card-bg: #f7f9f5;
+  --border: #cbd6cb; --border-soft: #dde5dc;
+  --text: #1f2a22; --text-muted: #5d7262;
+  --primary: #167a3a; --primary-hover: #115f2d; --on-primary: #ffffff;
+  --green: #3f8a4f; --yellow: #8f6a14; --red: #b3362f;
+  --on-yellow: #ffffff; --red-hover: #8e2a25; --yellow-hover: #6f5210;
+  --hover: rgba(0,0,0,.05); --hover-soft: rgba(0,0,0,.03);
+  --well: rgba(0,0,0,.04); --overlay: rgba(20,30,22,.45);
+  --raw-bg: #e4eae2; --raw-fg: #2c3a30; --console-bg: #0b120d; --knob: #ffffff;
+}
