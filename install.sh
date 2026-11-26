@@ -230,6 +230,10 @@ dashboard ALL=(ALL) NOPASSWD: /usr/local/sbin/nexus-dashboard-nut
 # Radiance module: a root-owned helper that writes the dashboard's boot-parameter
 # drop-in beside the vLLM Radiance unit (re-validates the file's shape itself).
 dashboard ALL=(ALL) NOPASSWD: /usr/local/sbin/nexus-dashboard-radiance
+# SSH Server module: a root-owned helper that installs the dashboard's one sshd
+# drop-in (validated line by line, proven with `sshd -t` before any reload) and
+# answers `sshd -T`.
+dashboard ALL=(ALL) NOPASSWD: /usr/local/sbin/nexus-dashboard-sshd
 # MiniDLNA DB rebuild: a root-owned helper that stops the service, deletes files.db
 # (confined to the hard-coded cache dir), and starts (minidlna rebuilds from a full
 # scan when files.db is missing). Deleting the db as root is escalation-sensitive,
@@ -1577,6 +1581,194 @@ if __name__ == '__main__':
 HELPER
 chown root:root "$RADIANCE_HELPER"
 chmod 755 "$RADIANCE_HELPER"
+
+# SSH Server module helper (4.2.0): the ONLY privileged surface of the SSH
+# Server page on a node whose dashboard is not root. It installs the
+# dashboard's one sshd drop-in, proves the whole configuration with `sshd -t`
+# before anything is reloaded (putting the previous file back on a refusal),
+# and answers `sshd -T`. It re-validates every line independently of the app
+# and can write nothing else. NOT writable by dashboard.
+SSHD_HELPER="/usr/local/sbin/${HELPER_PREFIX}-sshd"
+cat > "$SSHD_HELPER" << 'HELPER'
+#!/usr/bin/env python3
+# Root-owned helper for the dashboard SSH Server module.
+#
+#   effective            print `sshd -T` (the configuration sshd would run with;
+#                        it needs root because sshd loads the private host keys).
+#   apply <service>      (drop-in text on stdin) install
+#                        /etc/ssh/sshd_config.d/01-nexus-dashboard.conf, run
+#                        `sshd -t`, restore the previous file if sshd refuses,
+#                        else daemon-reload / re-bind the socket / reload.
+#   reset <service>      remove that one file, same validation and reload.
+#
+# Trust boundary. The dashboard validates every setting for the UI; this
+# helper re-validates the whole file independently. Every non-blank line must
+# be a `#` comment or ONE `Keyword value` pair whose keyword is on the
+# allowlist below and whose value matches that keyword's own pattern. There is
+# no way to express Match, Include, ForceCommand, AuthorizedKeysCommand,
+# Subsystem or any other keyword that names a file or a command. <service> is
+# `ssh` or `sshd`. Every command it runs has a fixed argv.
+import json
+import os
+import re
+import subprocess
+import sys
+
+SSHD = '/usr/sbin/sshd'
+DROPIN_DIR = '/etc/ssh/sshd_config.d'
+DROPIN = '01-nexus-dashboard.conf'
+MAX_BYTES = 8 * 1024
+YN = r'(?:yes|no)'
+NAMES = r'[A-Za-z0-9_.*?@:/][A-Za-z0-9_.*?@:/-]{0,63}(?: [A-Za-z0-9_.*?@:/][A-Za-z0-9_.*?@:/-]{0,63}){0,31}'
+RULES = {
+    'Port': r'[0-9]{1,5}',
+    'ListenAddress': r'(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}|[0-9A-Fa-f:]{2,39})',
+    'PermitRootLogin': r'(?:no|prohibit-password|forced-commands-only|yes)',
+    'AllowUsers': NAMES,
+    'AllowGroups': NAMES,
+    'PasswordAuthentication': YN,
+    'PubkeyAuthentication': YN,
+    'KbdInteractiveAuthentication': YN,
+    'PermitEmptyPasswords': YN,
+    'MaxAuthTries': r'[0-9]{1,2}',
+    'LoginGraceTime': r'[0-9]{1,3}',
+    'MaxSessions': r'[0-9]{1,3}',
+    'ClientAliveInterval': r'[0-9]{1,4}',
+    'ClientAliveCountMax': r'[0-9]{1,2}',
+    'X11Forwarding': YN,
+    'AllowTcpForwarding': r'(?:yes|local|remote|no)',
+    'AllowAgentForwarding': YN,
+    'GatewayPorts': r'(?:no|yes|clientspecified)',
+    'UseDNS': YN,
+    'PrintMotd': YN,
+}
+RULES = {k: re.compile('^' + v + r'\Z') for k, v in RULES.items()}
+REPEATABLE = ('Port', 'ListenAddress')
+SERVICES = ('ssh', 'sshd')
+
+
+def die(msg, rc=2):
+    sys.stderr.write('sshd helper: %s\n' % msg)
+    sys.exit(rc)
+
+
+def validate(text):
+    if len(text.encode('utf-8', 'replace')) > MAX_BYTES:
+        die('drop-in too large')
+    if '\0' in text or '\r' in text:
+        die('control character in drop-in')
+    seen = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        key, sep, val = line.partition(' ')
+        rule = RULES.get(key)
+        if not sep or rule is None:
+            die('refused line: %r' % raw[:120])
+        if not rule.match(val):
+            die('refused value for %s: %r' % (key, val[:80]))
+        seen[key] = seen.get(key, 0) + 1
+        if seen[key] > (4 if key in REPEATABLE else 1):
+            die('%s repeated' % key)
+        if key == 'Port' and not 1 <= int(val) <= 65535:
+            die('refused port %s' % val)
+    auth = ('PasswordAuthentication no', 'PubkeyAuthentication no', 'KbdInteractiveAuthentication no')
+    lines = [l.strip() for l in text.splitlines()]
+    if all(a in lines for a in auth):
+        die('every authentication method off')
+    return text
+
+
+def sh(argv, timeout=30):
+    r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    return r.returncode, r.stdout, r.stderr
+
+
+def show(unit, prop):
+    rc, out, _e = sh(['systemctl', 'show', unit, '-p', prop, '--value'])
+    return out.strip() if rc == 0 else ''
+
+
+def listeners(dump):
+    out = set()
+    for raw in dump.splitlines():
+        p = raw.strip().split(None, 1)
+        if len(p) == 2 and p[0].lower() in ('port', 'listenaddress'):
+            out.add(p[0].lower() + ' ' + p[1].strip())
+    return sorted(out)
+
+
+def commit(service, text):
+    """text=None removes the file. Install, test, restore on refusal, reload."""
+    path = os.path.join(DROPIN_DIR, DROPIN)
+    old = None
+    if os.path.isfile(path) and not os.path.islink(path):
+        with open(path) as f:
+            old = f.read()
+    elif os.path.lexists(path):
+        die('%s is not a regular file' % path)
+    _rc, before, _e = sh([SSHD, '-T'])
+    if text is None:
+        if old is not None:
+            os.remove(path)
+    else:
+        os.makedirs(DROPIN_DIR, 0o755, exist_ok=True)
+        tmp = os.path.join(DROPIN_DIR, '.' + DROPIN + '.tmp')
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(fd, 'w') as f:
+            f.write(text)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    rc, _o, e = sh([SSHD, '-t'])
+    if rc != 0:
+        if old is None:
+            if os.path.lexists(path):
+                os.remove(path)
+        else:
+            with open(path, 'w') as f:
+                f.write(old)
+        die('sshd refused the configuration, nothing was changed: ' + (e or '').strip()[-400:], 1)
+    _rc, after, _e = sh([SSHD, '-T'])
+    res = {'listeners_restarted': False, 'reloaded': False}
+    if show(service + '.socket', 'LoadState') == 'loaded':
+        sh(['systemctl', 'daemon-reload'])
+        if show(service + '.socket', 'ActiveState') == 'active' and listeners(before) != listeners(after):
+            rc, _o, e = sh(['systemctl', 'restart', service + '.socket'])
+            res['listeners_restarted'] = rc == 0
+            if rc != 0:
+                res['reload_error'] = (e or 'socket restart failed').strip()[-300:]
+    if show(service + '.service', 'ActiveState') == 'active':
+        rc, _o, e = sh(['systemctl', 'reload', service + '.service'])
+        res['reloaded'] = rc == 0
+        if rc != 0:
+            res['reload_error'] = (e or 'reload failed').strip()[-300:]
+    print(json.dumps(res))
+
+
+def main():
+    a = sys.argv[1:]
+    if os.geteuid() != 0:
+        die('must run as root')
+    if a == ['effective']:
+        rc, out, e = sh([SSHD, '-T'])
+        if rc != 0:
+            die((e or 'sshd -T failed').strip()[-400:], 1)
+        sys.stdout.write(out)
+        return
+    if len(a) != 2 or a[0] not in ('apply', 'reset') or a[1] not in SERVICES:
+        die('usage: effective | apply <ssh|sshd> (text on stdin) | reset <ssh|sshd>')
+    if a[0] == 'apply':
+        commit(a[1], validate(sys.stdin.read()))
+    else:
+        commit(a[1], None)
+
+
+if __name__ == '__main__':
+    main()
+HELPER
+chown root:root "$SSHD_HELPER"
+chmod 755 "$SSHD_HELPER"
 
 info "Setting up the llama.cpp models directory..."
 # Group-writable models dir: the dashboard downloads GGUFs straight into it, so

@@ -1,6 +1,7 @@
-/* Construct theme: glyph rain behind the sidebar and the login screen, plus
-   the CRT overlays. Registered as window.NexusThemes.construct and driven by
-   the loader in static/js/themes.js (mount on apply, unmount on switch).
+/* Construct theme: glyph rain behind the login screen, plus the CRT overlays
+   (the desktop shell has no sidebar to rain behind). Registered as
+   window.NexusThemes.construct and driven by the loader in
+   static/js/themes.js (mount on apply, unmount on switch).
    The rain is the Hive console's Rain class, simplified: one canvas per
    surface, density fixed, colour read from the theme's --rain-* tokens so the
    light printout gets dark-green rain on paper. Stops while the tab is hidden
@@ -86,8 +87,7 @@
         const d = document.createElement('div'); d.className = cls; d.setAttribute('aria-hidden', 'true');
         document.body.appendChild(d); overlays.push(d);
       }
-      rains = [canvasIn(document.querySelector('.sidebar'), 0.45),
-               canvasIn(document.getElementById('login-screen'), 0.7)].filter(Boolean);
+      rains = [canvasIn(document.getElementById('login-screen'), 0.7)].filter(Boolean);
       document.addEventListener('visibilitychange', onVisibility);
       start();
     },

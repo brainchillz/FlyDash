@@ -21,16 +21,16 @@ def test_scan_finds_every_module_file():
         'docker_compose', 'containers.client', 'containers.instances',
         'containers.images', 'containers.networks', 'containers.portforward',
         'containers.console', 'updates', 'nut', 'upsmon', 'halogen', 'docker_registry', 'radiance', 'affinity',
-        'radiance_engine', 'terminal'}
+        'radiance_engine', 'terminal', 'sshd'}
 
 
 def test_legacy_facade_order_reproduced():
     mods = discovery.load_builtin_modules()
     names = [m.__name__.rsplit('nexusdash.modules.', 1)[-1] for m in mods]
     # Legacy set first in the pinned order; post-3.0 module files sort after
-    # it alphabetically (affinity < docker_registry < halogen < nut < radiance < radiance_engine < terminal < updates < upsmon).
+    # it alphabetically (affinity < docker_registry < halogen < nut < radiance < radiance_engine < sshd < terminal < updates < upsmon).
     assert tuple(names) == discovery._LEGACY_FACADE_ORDER + ('affinity', 'docker_registry', 'halogen',
-                                                             'nut', 'radiance', 'radiance_engine', 'terminal', 'updates', 'upsmon')
+                                                             'nut', 'radiance', 'radiance_engine', 'sshd', 'terminal', 'updates', 'upsmon')
 
 
 def test_shape_classification():

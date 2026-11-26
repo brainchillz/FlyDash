@@ -1,7 +1,7 @@
 /* Construct — the Hive console (AI-Dashboard) applied to the Nexus shell.
    Fonts are self-hosted (OFL) so no request leaves the network. Every rule is
    scoped to html[data-theme="construct"] so nothing bleeds while a swap is
-   in flight. theme.js adds the glyph rain and the CRT overlays. */
+   in flight. theme.js adds the login screen's glyph rain and the CRT overlays. */
 @font-face { font-family: 'Share Tech Mono'; font-style: normal; font-weight: 400; font-display: swap;
   src: url(share-tech-mono-latin.woff2) format('woff2'); }
 @font-face { font-family: 'VT323'; font-style: normal; font-weight: 400; font-display: swap;
@@ -20,10 +20,22 @@ html[data-theme="construct"] {
   --raw-bg: #010302; --raw-fg: #9ff5b4; --console-bg: #010302; --knob: #e8ffe8;
   --radius: 0;
   --glow: rgba(0,255,65,.6); --scan: rgba(0,0,0,.26); --vignette: rgba(0,0,0,.5);
-  --rain-rgb: 0,255,65; --rain-head: #e8ffe8; --rain-side: .22; --rain-login: .55;
+  --rain-rgb: 0,255,65; --rain-head: #e8ffe8; --rain-login: .55;
   --mono: 'Share Tech Mono', ui-monospace, Menlo, Consolas, monospace;
   --sans: var(--mono);
   --display: 'VT323', var(--mono);
+  /* Desktop shell (see the block at the end of this file). Derived from
+     --bg / --text / --border, so the light printout follows on its own. */
+  --desk-glass: color-mix(in srgb, var(--bg) 93%, transparent);
+  --desk-glass-solid: color-mix(in srgb, var(--bg) 98%, transparent);
+  --desk-glass-border: var(--border);
+  --desk-taskbar: color-mix(in srgb, var(--bg) 95%, transparent);
+  --desk-icon-text: var(--text);
+  --desk-icon-shadow: none;
+  --desk-icon-hover: color-mix(in srgb, var(--bg) 60%, transparent);
+  --desk-icon-sel: color-mix(in srgb, var(--bg) 80%, transparent);
+  --desk-rail-sel: color-mix(in srgb, var(--primary) 14%, transparent);
+  --desk-muted: color-mix(in srgb, var(--text) 78%, var(--bg));
 }
 /* Light: a green-ink printout — same faces, the glow and CRT fade to paper. */
 html[data-theme="construct"].theme-light {
@@ -38,14 +50,13 @@ html[data-theme="construct"].theme-light {
   --well: rgba(11,122,42,.06); --overlay: rgba(10,40,16,.45);
   --raw-bg: #e2ecda; --raw-fg: #0b2e14; --console-bg: #0b2e14; --knob: #ffffff;
   --glow: rgba(11,122,42,.3); --scan: rgba(0,40,10,.06); --vignette: rgba(0,30,8,.16);
-  --rain-rgb: 11,122,42; --rain-head: #0b2e14; --rain-side: .1; --rain-login: .3;
+  --rain-rgb: 11,122,42; --rain-head: #0b2e14; --rain-login: .3;
 }
 
 /* ── Terminal face everywhere, uppercase display headings in VT323 ── */
 html[data-theme="construct"] .btn,
 html[data-theme="construct"] .form-control { font-family: var(--mono); }
 html[data-theme="construct"] .content h2 { font-family: var(--display); font-size: 30px; font-weight: 400; text-transform: uppercase; letter-spacing: .04em; line-height: 1; text-shadow: 0 0 7px var(--glow); }
-html[data-theme="construct"] .nav-cat { letter-spacing: .18em; font-weight: 400; }
 html[data-theme="construct"] .card-head,
 html[data-theme="construct"] .table thead th { font-weight: 400; letter-spacing: .14em; }
 html[data-theme="construct"] .card-value,
@@ -57,8 +68,6 @@ html[data-theme="construct"] .modal-header h3 { font-family: var(--display); fon
 html[data-theme="construct"] .stat-v { font-family: var(--display); font-size: 1.9em; font-weight: 400; }
 
 /* ── Phosphor bloom on the hot elements only ── */
-html[data-theme="construct"] .machine-strip .ms-host,
-html[data-theme="construct"] .nav-list a.active,
 html[data-theme="construct"] .subtitle strong { text-shadow: 0 0 7px var(--glow); }
 html[data-theme="construct"] .status-badge.green,
 html[data-theme="construct"] .health-ok { text-shadow: 0 0 6px var(--glow); }
@@ -80,42 +89,24 @@ html[data-theme="construct"] .btn.sso-btn { color: var(--text-muted); }
 html[data-theme="construct"] .btn-outline:hover,
 html[data-theme="construct"] .table .btn:hover { color: var(--text); }
 html[data-theme="construct"] .content h3::before,
-html[data-theme="construct"] .modal-body h3::before,
-html[data-theme="construct"] .nav-cat::before { content: '> '; letter-spacing: 0; }
-html[data-theme="construct"] .nav-cat { justify-content: flex-start; gap: 6px; }
-html[data-theme="construct"] .nav-cat .caret { margin-left: auto; }
-html[data-theme="construct"] .nav-list a.active::before { content: '>'; margin-right: -3px; }
+html[data-theme="construct"] .modal-body h3::before { content: '> '; letter-spacing: 0; }
 html[data-theme="construct"] .health-ok::before { content: '> '; }
 html[data-theme="construct"] .modal-close { font-family: var(--mono); font-size: 13px; }
 html[data-theme="construct"] .modal-close::before { content: '[ x ]'; }
 html[data-theme="construct"] .modal-close { font-size: 0; }
 html[data-theme="construct"] .modal-close::before { font-size: 13px; }
 
-/* ── The machine strip opens with a shell prompt and ends on a live cursor ── */
-html[data-theme="construct"] .machine-strip { gap: 16px; }
-html[data-theme="construct"] .machine-strip .ms-host::before { content: 'operator@'; color: var(--text-muted); font-weight: 400; text-shadow: none; }
-html[data-theme="construct"] .machine-strip .ms-host::after { content: ':~$'; color: var(--text-muted); font-weight: 400; text-shadow: none; }
-html[data-theme="construct"] .machine-strip .ms-right::after { content: '\2588'; margin-left: 8px; color: var(--primary); animation: construct-cursor 1s steps(1) infinite; }
-@keyframes construct-cursor { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
-
 /* ── Dashed inner dividers (solid outer frame, dashed inside) ── */
 html[data-theme="construct"] .table tbody td { border-bottom-style: dashed; }
 html[data-theme="construct"] .content h3::after,
 html[data-theme="construct"] .modal-body h3::after { border-top-style: dashed; }
-html[data-theme="construct"] .sidebar-header { border-bottom-style: dashed; }
-html[data-theme="construct"] .sidebar-footer { border-top-style: dashed; }
 html[data-theme="construct"] .modal-header { border-bottom-style: dashed; }
 html[data-theme="construct"] .zfs-vdev { border-left: 1px dashed var(--border); margin-left: 4px; padding-left: 12px; }
 
-/* ── Rain canvases (theme.js inserts them) sit under the content ── */
-html[data-theme="construct"] .sidebar,
-html[data-theme="construct"] #login-screen { position: relative; isolation: isolate; }
-html[data-theme="construct"] #login-screen { position: fixed; }
+/* ── Rain canvas (theme.js inserts it in the login screen) sits under the content ── */
+html[data-theme="construct"] #login-screen { position: fixed; isolation: isolate; }
 html[data-theme="construct"] .construct-rain { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
-html[data-theme="construct"] .sidebar .construct-rain { opacity: var(--rain-side); }
 html[data-theme="construct"] #login-screen .construct-rain { opacity: var(--rain-login); }
-html[data-theme="construct"] .sidebar-header,
-html[data-theme="construct"] .sidebar-footer { background: var(--sidebar-bg); }
 html[data-theme="construct"] .login-box { box-shadow: 0 0 40px rgba(0,0,0,.6); }
 
 /* ── CRT scanlines + vignette + the 9 s flicker (theme.js inserts the overlays) ── */
@@ -127,5 +118,57 @@ html[data-theme="construct"] body { animation: construct-flicker 9s linear infin
 @keyframes construct-flicker { 0%, 100% { opacity: 1; } 91% { opacity: 1; } 92% { opacity: .86; } 93% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   html[data-theme="construct"] body { animation: none; }
-  html[data-theme="construct"] .machine-strip .ms-right::after { animation: none; }
+  html[data-theme="construct"] .tray-item.host-item .host::after { animation: none; }
 }
+
+/* ── Desktop shell: icons, widget, windows, taskbar ──
+   The shell's default glass is a neutral grey meant for light text; the
+   phosphor text sat on it (and on the bare wallpaper) at almost no contrast.
+   Give the shell the screen's own colours instead: everything is derived
+   from --bg / --text / --border, so the light printout follows without rules
+   of its own. The --desk-* tokens live in the theme's first block (one token
+   block per mode is what tests/test_themes.py parses). */
+/* Icon labels: a solid plate, so they read over any wallpaper. */
+html[data-theme="construct"] .dicon { width: 108px; border-radius: 0; }   /* the mono face is wide: "Reverse Proxy" must fit */
+html[data-theme="construct"] .dicon .ib,
+html[data-theme="construct"] .lapp .ib { border-radius: 0; }
+html[data-theme="construct"] .dicon span.lbl { background: var(--bg); border: 1px solid var(--border); padding: 2px 5px 1px; }
+html[data-theme="construct"] .dicon.sel span.lbl,
+html[data-theme="construct"] .dicon:hover span.lbl { border-color: var(--primary); }
+html[data-theme="construct"] .dicon:hover .ib { border-color: var(--primary); box-shadow: 0 0 10px var(--glow); }
+/* Widget: bright values, labels a step down rather than the page's dim --text-muted. */
+html[data-theme="construct"] .widget { color: var(--text); border-radius: 0; }
+html[data-theme="construct"] .widget .wt,
+html[data-theme="construct"] .widget .wrow .k,
+html[data-theme="construct"] .widget .usage-pct { color: var(--desk-muted); }
+html[data-theme="construct"] .widget .wt strong { color: var(--primary); text-shadow: 0 0 7px var(--glow); }
+html[data-theme="construct"] .widget .card-sub { color: var(--text); }
+/* Windows: the prompt and the bloom the sidebar used to carry. */
+html[data-theme="construct"] .win,
+html[data-theme="construct"] #launcher,
+html[data-theme="construct"] #tray-menu { border-radius: 0; }
+html[data-theme="construct"] .win-title .win-name { font-weight: 400; letter-spacing: .08em; text-transform: uppercase; }
+html[data-theme="construct"] .win:not(.inactive) .win-title .win-name { color: var(--primary); text-shadow: 0 0 7px var(--glow); }
+html[data-theme="construct"] .win.inactive .win-title,
+html[data-theme="construct"] .win-title .win-sub { color: var(--desk-muted); }
+html[data-theme="construct"] .win-title .win-sub::before { content: '>'; color: var(--text-muted); }
+html[data-theme="construct"] .win-btn { border-radius: 0; color: var(--desk-muted); }
+html[data-theme="construct"] .win-btn.x:hover { color: var(--on-primary); }
+html[data-theme="construct"] .win-rail .grp { letter-spacing: .18em; font-weight: 400; color: var(--desk-muted); }
+html[data-theme="construct"] .win-rail .grp::before { content: '> '; letter-spacing: 0; }
+html[data-theme="construct"] .rail-item { border-radius: 0; color: var(--desk-muted); }
+html[data-theme="construct"] .rail-item.sel { color: var(--primary); text-shadow: 0 0 7px var(--glow); }
+/* Taskbar: tray text a step down from the values; the host reads as a shell
+   prompt ending on a live cursor (it was the machine strip's). */
+html[data-theme="construct"] .tb,
+html[data-theme="construct"] .tray-item,
+html[data-theme="construct"] .lapp,
+html[data-theme="construct"] #tray-menu .mi { border-radius: 0; }
+html[data-theme="construct"] .tray-item { color: var(--desk-muted); }
+html[data-theme="construct"] .tray-item .host { color: var(--primary); text-shadow: 0 0 7px var(--glow); }
+html[data-theme="construct"] .tray-item.host-item .host::before { content: 'operator@'; color: var(--desk-muted); font-weight: 400; text-shadow: none; }
+html[data-theme="construct"] .tray-item.host-item .host::after { content: '\2588'; margin-left: 3px; animation: construct-cursor 1s steps(1) infinite; }
+@keyframes construct-cursor { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+html[data-theme="construct"] #launcher .lhead,
+html[data-theme="construct"] .lapp.dim,
+html[data-theme="construct"] #tray-menu .mh { color: var(--desk-muted); }

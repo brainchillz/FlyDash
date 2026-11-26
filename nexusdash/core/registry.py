@@ -293,6 +293,7 @@ _SETTINGS_GROUPS = {
     'services': 'Node', 'updates': 'Node', 'tasks': 'Node', 'network': 'Node',
     'firewall': 'Node',
     'users': 'Security', 'certificate': 'Security', 'audit': 'Security',
+    'sshd': 'Security',
     'notifications': 'Maintenance', 'logs': 'Maintenance',
     'diagnostics': 'Maintenance', 'nodeconfig': 'Maintenance',
     'account': 'Desktop', 'appearance': 'Desktop', 'modules': 'Desktop',

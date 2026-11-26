@@ -1,8 +1,8 @@
 {
   "id": "amiga",
   "name": "Amiga Workbench",
-  "description": "Workbench 1.3 in four colours with a pixel face: screen bar and depth gadgets, close and sizing gadgets, one-pixel bevels, a dithered drag bar. Light mode is Workbench 2.0 grey.",
-  "author": "Nexus Dashboard",
+  "description": "Workbench 1.3 in four colours with a pixel face: screen bar and depth gadgets, close and sizing gadgets, one-pixel bevels, a striped drag bar. Light mode is Workbench 2.0 grey.",
+  "author": "FlyDash",
   "version": "1.0",
   "modes": [
     "dark",

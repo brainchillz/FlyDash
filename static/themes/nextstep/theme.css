@@ -40,6 +40,31 @@ html[data-theme="nextstep"] {
   --on-yellow: #111111;
   --red-hover: #c9655c;
   --yellow-hover: #cfae55;
+  /* Desktop shell (see the block at the end of this file). Derived from the
+     theme's own tokens, so the light block only overrides what differs. */
+  --title-off: #6a6a6a;
+  --title-off-fg: #111111;
+  --tb-face: #9a9a9a;
+  --tb-hi: #dddddd;
+  --tb-lo: #333333;
+  --tb-ink: #000000;
+  --sel-fg: #ffffff;
+  --cube-a: #f0f0f0;
+  --cube-b: #9a9a9a;
+  --bevel: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--sh), inset -2px -2px 0 var(--mid);
+  --sunk: inset 1px 1px 0 var(--sh), inset 2px 2px 0 var(--mid), inset -1px -1px 0 var(--hi);
+  --desk-glass: var(--bg);
+  --desk-glass-solid: var(--bg);
+  --desk-glass-border: var(--sh);
+  --desk-taskbar: transparent;
+  --desk-icon-text: var(--text);
+  --desk-icon-shadow: none;
+  --desk-icon-hover: transparent;
+  --desk-icon-sel: transparent;
+  --desk-icon-box-shadow: 2px 2px 0 rgba(0,0,0,.4);
+  --desk-rail-sel: var(--nav-active);
+  --desk-win-shadow: 0 0 0 1px var(--sh), 4px 6px 14px rgba(0,0,0,.55);
+  --desk-win-shadow-soft: 0 0 0 1px var(--sh), 2px 3px 8px rgba(0,0,0,.4);
 }
 html[data-theme="nextstep"].theme-light {
   color-scheme: light;
@@ -77,19 +102,14 @@ html[data-theme="nextstep"].theme-light {
   --on-yellow: #ffffff;
   --red-hover: #8a2416;
   --yellow-hover: #705600;
+  --title-off: #aaaaaa;
+  --title-off-fg: #000000;
+  --tb-face: #aaaaaa;
+  --tb-hi: #ffffff;
+  --tb-lo: #555555;
+  --sel-fg: #000000;
 }
 html[data-theme="nextstep"] body { font-family:var(--sans) }
-html[data-theme="nextstep"] .sidebar { border-right:0;margin:6px 0 6px 6px;box-shadow:inset 1px 1px 0 var(--sh),inset 2px 2px 0 var(--mid),inset -1px -1px 0 var(--hi) }
-html[data-theme="nextstep"] .sidebar-header { border-bottom:2px solid var(--sh);box-shadow:0 1px 0 var(--hi) }
-html[data-theme="nextstep"] .sidebar-header h1 { font-weight:700 }
-html[data-theme="nextstep"] .nav-cat { font-weight:700;color:var(--text);letter-spacing:.04em;font-size:10px }
-html[data-theme="nextstep"] .nav-list a { border-left:0;color:var(--text);padding:5px 12px }
-html[data-theme="nextstep"] .nav-list a:not(.active):hover { background:rgba(255,255,255,.08) }
-html[data-theme="nextstep"] .nav-list a.active { color:#000;background:var(--nav-active);box-shadow:inset 1px 1px 0 var(--sh),inset -1px -1px 0 var(--hi) }
-html[data-theme="nextstep"]:not(.theme-light) .nav-list a.active { color:#fff }
-html[data-theme="nextstep"] .sidebar-footer { border-top:2px solid var(--sh);box-shadow:0 -1px 0 var(--hi) inset }
-html[data-theme="nextstep"] .main-col { margin:6px }
-html[data-theme="nextstep"] .machine-strip { background:var(--bg);border-bottom:0;box-shadow:inset 0 -1px 0 var(--sh),inset 0 -2px 0 var(--mid);font-family:var(--sans);font-size:11.5px;color:var(--text) }
 html[data-theme="nextstep"] .content h2 { font-weight:700;font-size:17px }
 html[data-theme="nextstep"] .content h3,
 html[data-theme="nextstep"] .modal-body h3 { color:var(--text);font-weight:700;letter-spacing:.04em }
@@ -153,23 +173,95 @@ html[data-theme="nextstep"] .login-box .sso-sep { margin-bottom:0 }
 html[data-theme="nextstep"] .login-box form,
 html[data-theme="nextstep"] .login-box { padding-bottom:20px }
 
-/* ── window chrome (theme.js inserts .next-titlebar / .next-dock) ── */
-html[data-theme="nextstep"] body { padding: 12px; background: var(--desk); flex-wrap: wrap; align-content: flex-start; }
-html[data-theme="nextstep"] .next-titlebar { flex-basis: 100%; order: -1; height: 22px; background: var(--title); color: var(--title-fg); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; position: relative; }
-html[data-theme="nextstep"] .next-tb { position: absolute; top: 3px; width: 15px; height: 15px; background: #aaa; box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #000, inset -2px -2px 0 #555; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #000; font-weight: 700; line-height: 1; }
-html[data-theme="nextstep"] .next-tb.min { left: 4px; } html[data-theme="nextstep"] .next-tb.min::before { content: ''; width: 7px; height: 7px; border: 1px solid #000; box-shadow: inset 1px 1px 0 #fff; }
-html[data-theme="nextstep"] .next-tb.close { right: 4px; } html[data-theme="nextstep"] .next-tb.close::before { content: '×'; }
-html[data-theme="nextstep"] .sidebar { height: calc(100vh - 46px); position: sticky; top: 34px; margin: 0; background: var(--bg); border-right: 0; box-shadow: inset 1px 1px 0 var(--sh), inset 2px 2px 0 var(--mid), inset -1px -1px 0 var(--hi); }
-html[data-theme="nextstep"] .nav-list { overflow-y: auto; min-height: 0; }
-html[data-theme="nextstep"] .main-col { height: calc(100vh - 46px); max-height: none; background: var(--bg); }
-html[data-theme="nextstep"] .next-dock { order: 1; width: 66px; flex-shrink: 0; height: calc(100vh - 46px); display: flex; flex-direction: column; gap: 2px; padding: 6px 0 6px 2px; overflow: hidden; background: var(--bg); }
-html[data-theme="nextstep"] .next-tile { width: 60px; height: 60px; background: var(--bg); box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--sh), inset -2px -2px 0 var(--mid); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 9px; font-weight: 700; color: var(--text); cursor: pointer; letter-spacing: .04em; border: 0; font-family: var(--sans); padding: 0; }
-html[data-theme="nextstep"].theme-light .next-tile { background: #aaa; }
-html[data-theme="nextstep"] .next-tile .ico { width: 22px; height: 22px; stroke-width: 1.6; }
-html[data-theme="nextstep"] .next-tile:active { box-shadow: inset 1px 1px 0 var(--sh), inset -1px -1px 0 var(--hi); }
-html[data-theme="nextstep"] .next-cube { width: 26px; height: 26px; background: linear-gradient(135deg,#f0f0f0 0 50%,#9a9a9a 50% 100%); box-shadow: inset 0 0 0 1px #000; transform: rotate(45deg) scale(.8); }
-html[data-theme="nextstep"] .nav-list a.active { background: var(--nav-active); }
-html[data-theme="nextstep"] .login-box { padding: 0 0 20px; }
-html[data-theme="nextstep"] .login-box > *:not(:first-child) { margin-left: 20px; margin-right: 20px; }
-@media (max-width: 720px) { html[data-theme="nextstep"] .next-dock { display: none; } }
+/* ── Desktop shell ──
+   NeXTSTEP lives in the shell's own parts; theme.js injects nothing. Window
+   title = the black key-window bar (grey when not key) with square bevelled
+   buttons — miniaturize on the left, zoom and close on the right, the three
+   .win-btn buttons restyled. The resize handle is the full-width resize bar
+   under the window. The taskbar is the Dock: every .tb is a tile, the
+   launcher tile carries the cube, the tray is one wide tile. The --desk-*
+   tokens are in the two token blocks at the top. */
+html[data-theme="nextstep"] #desktop { font-family: var(--sans); }
 
+/* Icons: Dock-style tiles, labels on a plate so they read on any wallpaper */
+html[data-theme="nextstep"] .dicon { border-radius: 0; }
+html[data-theme="nextstep"] .dicon.sel { border-color: transparent; }
+html[data-theme="nextstep"] .dicon .ib,
+html[data-theme="nextstep"] .lapp .ib { border: 0; border-radius: 0; background: var(--bg); color: var(--text); box-shadow: var(--bevel), var(--desk-icon-box-shadow); }
+html[data-theme="nextstep"] .dicon span.lbl { background: var(--bg); color: var(--text); padding: 2px 6px; font-weight: 700; box-shadow: 0 0 0 1px var(--sh); }
+html[data-theme="nextstep"] .dicon:hover .ib { background: var(--card-bg); }
+html[data-theme="nextstep"] .dicon.sel .ib { background: var(--card-bg); box-shadow: var(--sunk), var(--desk-icon-box-shadow); }
+html[data-theme="nextstep"] .dicon.sel span.lbl { background: var(--nav-active); color: var(--sel-fg); }
+
+/* Widget: a small panel with its own black title bar */
+html[data-theme="nextstep"] .widget { background: var(--bg); border: 0; border-radius: 0; backdrop-filter: none; color: var(--text); box-shadow: var(--bevel), var(--desk-win-shadow-soft); }
+html[data-theme="nextstep"] .widget .wt { margin: -10px -12px 10px; padding: 0 8px; height: 22px; align-items: center; background: var(--title); color: var(--title-fg); }
+html[data-theme="nextstep"] .widget .wt strong { color: var(--title-fg); font-weight: 700; }
+html[data-theme="nextstep"] .widget .wrow .k { color: var(--text); font-weight: 700; }
+html[data-theme="nextstep"] .widget .card-sub,
+html[data-theme="nextstep"] .widget .wline.ok,
+html[data-theme="nextstep"] .health-ok { color: var(--text); }
+
+/* Windows */
+html[data-theme="nextstep"] .win { border: 0; border-radius: 0; background: var(--bg); }
+html[data-theme="nextstep"] .win-title { --tf: var(--title-fg); height: 23px; padding: 0 3px; gap: 6px; background: var(--title); color: var(--tf); border-bottom: 1px solid var(--sh); box-shadow: inset 1px 1px 0 var(--mid); }
+html[data-theme="nextstep"] .win.inactive .win-title { --tf: var(--title-off-fg); background: var(--title-off); color: var(--tf); box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--mid); }
+html[data-theme="nextstep"] .win-title > .ico,
+html[data-theme="nextstep"] .win.inactive .win-title > .ico { margin-left: auto; color: var(--tf); }
+html[data-theme="nextstep"] .win-title .win-name { font-weight: 700; font-size: 13px; }
+html[data-theme="nextstep"] .win-title .win-sub { flex: 0 1 auto; color: var(--tf); }
+html[data-theme="nextstep"] .win-title .win-sub::before { color: var(--tf); opacity: .6; }
+html[data-theme="nextstep"] .win-btn,
+html[data-theme="nextstep"] .win-btn:hover,
+html[data-theme="nextstep"] .win-btn.x:hover { position: relative; flex: none; width: 17px; height: 17px; border-radius: 0; background: var(--tb-face); color: var(--tb-ink); box-shadow: inset 1px 1px 0 var(--tb-hi), inset -1px -1px 0 var(--tb-ink), inset -2px -2px 0 var(--tb-lo); }
+html[data-theme="nextstep"] .win-btn:hover,
+html[data-theme="nextstep"] .win-btn.x:hover { background: var(--tb-hi); }
+html[data-theme="nextstep"] .win-btn:active { box-shadow: inset 1px 1px 0 var(--tb-ink), inset 2px 2px 0 var(--tb-lo), inset -1px -1px 0 var(--tb-hi); }
+html[data-theme="nextstep"] .win-btn .ico { display: none; }
+html[data-theme="nextstep"] .win-btn::before { content: ''; position: absolute; box-sizing: border-box; }
+html[data-theme="nextstep"] .win-btn[data-act="min"] { order: -1; }
+html[data-theme="nextstep"] .win-btn[data-act="min"]::before { left: 4px; top: 4px; width: 8px; height: 8px; border: 1px solid var(--tb-ink); box-shadow: inset 1px 1px 0 var(--tb-hi); }
+html[data-theme="nextstep"] .win-btn[data-act="max"] { margin-left: auto; }
+html[data-theme="nextstep"] .win-btn[data-act="max"]::before { left: 3px; top: 3px; width: 10px; height: 10px; border: 1px solid var(--tb-ink); border-top-width: 3px; }
+html[data-theme="nextstep"] .win-btn[data-act="close"]::before { content: '\00d7'; inset: 0 1px 1px 0; display: flex; align-items: center; justify-content: center; font: 700 15px/1 var(--sans); color: var(--tb-ink); }
+html[data-theme="nextstep"] .win:not(.max) .win-body { margin-bottom: 9px; }
+html[data-theme="nextstep"] .win-rail { background: var(--bg); border-right: 0; box-shadow: inset -1px 0 0 var(--sh), inset -2px 0 0 var(--mid), inset 1px 0 0 var(--hi); }
+html[data-theme="nextstep"] .win-rail .grp { color: var(--text); font-weight: 700; letter-spacing: .04em; font-size: 10px; }
+html[data-theme="nextstep"] .rail-item { border-radius: 0; color: var(--text); padding: 6px 10px; }
+html[data-theme="nextstep"] .rail-item:hover { background: var(--hover); color: var(--text); }
+html[data-theme="nextstep"] .rail-item.sel { background: var(--nav-active); color: var(--sel-fg); box-shadow: inset 1px 1px 0 var(--sh), inset -1px -1px 0 var(--hi); }
+html[data-theme="nextstep"] .win-resize { left: 0; right: 0; width: auto; height: 9px; border-top: 1px solid var(--sh);
+  background: linear-gradient(90deg, transparent 0 29px, var(--sh) 29px 30px, var(--hi) 30px 31px, transparent 31px calc(100% - 31px), var(--sh) calc(100% - 31px) calc(100% - 30px), var(--hi) calc(100% - 30px) calc(100% - 29px), transparent calc(100% - 29px)), var(--bg);
+  box-shadow: inset 1px 1px 0 var(--hi), inset -1px -1px 0 var(--mid); }
+
+/* Taskbar: the Dock, laid along the bottom */
+html[data-theme="nextstep"] #taskbar { gap: 0; padding: 0 2px; background: transparent; border-top: 0; backdrop-filter: none; }
+html[data-theme="nextstep"] .tb { height: 54px; min-width: 54px; border-radius: 0; background: var(--bg); color: var(--text); box-shadow: var(--bevel); }
+html[data-theme="nextstep"] .tb:hover { background: var(--card-bg); }
+html[data-theme="nextstep"] .tb:active,
+html[data-theme="nextstep"] .tb.launch.on { background: var(--card-bg); box-shadow: var(--sunk); }
+html[data-theme="nextstep"] .tb.act { background: var(--nav-active); color: var(--sel-fg); box-shadow: var(--sunk); }
+html[data-theme="nextstep"] .tb.run::after { left: 7px; bottom: 6px; margin-left: 0; width: 3px; height: 3px; border-radius: 0; background: var(--text); box-shadow: 5px 0 0 var(--text), 10px 0 0 var(--text); }
+html[data-theme="nextstep"] .tb.act::after { width: 3px; height: 3px; margin-left: 0; background: var(--sel-fg); box-shadow: 5px 0 0 var(--sel-fg), 10px 0 0 var(--sel-fg); }
+html[data-theme="nextstep"] .tb.launch .ico { display: none; }
+html[data-theme="nextstep"] .tb.launch::before { content: ''; width: 26px; height: 26px; background: linear-gradient(135deg, var(--cube-a) 0 50%, var(--cube-b) 50% 100%); box-shadow: inset 0 0 0 1px var(--tb-ink); transform: rotate(45deg) scale(.8); }
+html[data-theme="nextstep"] .tb-sep { width: 8px; background: transparent; margin: 0; }
+html[data-theme="nextstep"] .tray { height: 54px; padding: 0 6px; background: var(--bg); box-shadow: var(--bevel); }
+html[data-theme="nextstep"] .tray-item { height: 40px; border-radius: 0; color: var(--text); }
+html[data-theme="nextstep"] .tray-item.clock { font-family: var(--sans); }
+html[data-theme="nextstep"] button.tray-item:hover { background: var(--card-bg); box-shadow: var(--bevel); }
+
+/* Launcher and tray menu: panels */
+html[data-theme="nextstep"] #launcher,
+html[data-theme="nextstep"] #tray-menu { background: var(--bg); border: 0; border-radius: 0; backdrop-filter: none; box-shadow: var(--bevel), var(--desk-win-shadow); }
+html[data-theme="nextstep"] #launcher .lsearch { border: 0; border-radius: 0; background: var(--field); color: var(--text); box-shadow: var(--sunk); }
+html[data-theme="nextstep"] #launcher .lhead { color: var(--text); font-weight: 700; }
+html[data-theme="nextstep"] .lapp { border-radius: 0; }
+html[data-theme="nextstep"] .lapp .ib { box-shadow: var(--bevel); }
+html[data-theme="nextstep"] .lapp:hover .ib { background: var(--card-bg); }
+html[data-theme="nextstep"] #tray-menu .mi { border-radius: 0; }
+html[data-theme="nextstep"] #tray-menu .mi:hover { background: var(--nav-active); color: var(--sel-fg); }
+html[data-theme="nextstep"] #tray-menu .mi .ico { color: inherit; }
+html[data-theme="nextstep"] #tray-menu .mh { margin: -5px -5px 4px; padding: 4px 10px 5px; background: var(--title); color: var(--title-fg); border-bottom: 0; }
+html[data-theme="nextstep"] #tray-menu .mh strong { color: var(--title-fg); }
+html[data-theme="nextstep"] .wall-sw .src { color: var(--text); }

@@ -38,6 +38,7 @@ HELPERS = {
     'disks': ['locate-read', 'mount'], 'iscsi': ['iscsi-sessions'], 'schedules': ['snap-fs'],
     'caddy': ['caddy'], 'updates': ['updates'], 'gpu': ['gpu-tune'],
     'nut': ['nut'], 'upsmon': ['nut'], 'minidlna': ['dlna-rescan', 'dlna-stats'],
+    'sshd': ['sshd'],
     'network': ['netplan'],                    # core page, always on
 }
 # Supplementary groups the service user needs (any one of a tuple suffices).

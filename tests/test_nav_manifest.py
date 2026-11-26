@@ -76,6 +76,8 @@ EXPECTED_NAV = [
         ('logs', 'Logs', 'log', None, False),
         ('network', 'Network', 'net', None, True),
         ('firewall', 'Firewall', 'shield', 'firewall', True),
+        # 4.2.0: the node's own OpenSSH daemon.
+        ('sshd', 'SSH Server', 'key', 'sshd', True),
         ('account', 'My Account', 'user', None, False),
         # 4.0.0 (FlyDash): theme / mode / wallpaper on their own page.
         ('appearance', 'Appearance', 'image', None, False),
@@ -144,6 +146,7 @@ EXPECTED_APPS = [
     ('settings', 'Settings', 'sli', [
         ('services', 'Node'), ('updates', 'Node'), ('tasks', 'Node'), ('network', 'Node'),
         ('firewall', 'Node'),
+        ('sshd', 'Security'),
         ('users', 'Security'), ('certificate', 'Security'), ('audit', 'Security'),
         ('logs', 'Maintenance'), ('notifications', 'Maintenance'),
         ('nodeconfig', 'Maintenance'), ('diagnostics', 'Maintenance'),

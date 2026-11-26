@@ -1,8 +1,8 @@
 {
   "id": "nextstep",
   "name": "NeXTSTEP",
-  "description": "Four greys and black, raised and sunken bevels, a black key-window bar, Helvetica, and a Dock of tiles down the right edge. Dark is the same machine with the lights off.",
-  "author": "Nexus Dashboard",
+  "description": "Four greys and black, raised and sunken bevels, a black key-window bar, Helvetica, and a Dock of tiles along the bottom. Dark is the same machine with the lights off.",
+  "author": "FlyDash",
   "version": "1.0",
   "modes": [
     "dark",

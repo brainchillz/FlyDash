@@ -15,7 +15,7 @@ to the backend.
 
 <img src="docs/flydash-desktop.png" alt="The FlyDash desktop: fly wallpaper, app icons, the node status widget, the taskbar, and two open windows — Storage on ZFS Pools and the Overview dashboard" width="100%">
 
-*The desktop (4.1.2): app icons, the node status widget, the taskbar, and two
+*The desktop: app icons, the node status widget, the taskbar, and two
 app windows — Storage and Overview — open over the shipped wallpaper.*
 
 ## Screenshots
@@ -24,7 +24,8 @@ app windows — Storage and Overview — open over the shipped wallpaper.*
 |---|---|
 | <img src="docs/flydash-launcher.png" alt="The app launcher open over the desktop, with search, the enabled apps and the apps not enabled on this node" width="100%"><br>**App launcher** — search apps and sections; apps a node does not use are listed as not enabled. | <img src="docs/flydash-storage.png" alt="The Storage app on ZFS Pools: ARC usage, two pools with their vdev members and scrub status, and the dataset table" width="100%"><br>**Storage** — ZFS pools, members, scrubs and datasets; LVM, MD RAID, snapshots and replication in the same window. |
 | <img src="docs/flydash-overview.png" alt="The Overview app: health line, service tiles, system resources and one card per filesystem" width="100%"><br>**Overview** — health, services, live resources and every filesystem on the node. | <img src="docs/flydash-appearance.png" alt="Settings on Appearance: theme and mode choice, the node default theme, and the wallpaper picker" width="100%"><br>**Appearance** — theme, dark/light mode, the node default and the wallpaper. |
-| <img src="docs/flydash-apps.png" alt="Settings on Apps: per-module toggles grouped by Storage, Sharing and AI Tools" width="100%"><br>**Apps** — per-node module toggles decide which apps a node shows. | <img src="docs/flydash-light.png" alt="The desktop in light mode with the Storage window open" width="100%"><br>**Light mode** — every theme has a dark and a light mode. |
+| <img src="docs/flydash-ssh.png" alt="Settings on SSH Server: service state with Stop, Restart and Reload, and the typed settings table with the value in force beside each override" width="100%"><br>**SSH Server** — control sshd and change its settings from a typed list, tested before every reload. | <img src="docs/flydash-apps.png" alt="Settings on Apps: per-module toggles grouped by Storage, Sharing and AI Tools" width="100%"><br>**Apps** — per-node module toggles decide which apps a node shows. |
+| <img src="docs/flydash-light.png" alt="The desktop in light mode with the Storage window open" width="100%"><br>**Light mode** — every theme has a dark and a light mode. | |
 
 Nexus Dashboard is a single modular web dashboard for a whole home-lab fleet: **storage** (ZFS,
 LVM, MD RAID, disks), **sharing** (iSCSI, NFS, SMB, DLNA), **AI tools**
@@ -144,6 +145,14 @@ next restart.
   itself: it is auto-allowed when enabling or defaulting to deny (without ever
   widening an existing source-restricted rule), deny rules against it are
   refused, and rule deletes are re-verified against the live table first.
+- **SSH server without lockouts** — the SSH Server page starts, stops and
+  reloads the node's OpenSSH daemon (socket-activated or not) and edits its
+  settings from a typed list: port, listen addresses, root login, password /
+  key authentication, allowed users and groups, forwarding, keep-alives.
+  Choices go to one drop-in file (your `sshd_config` is never edited), the
+  whole configuration is tested with `sshd -t` before anything is reloaded and
+  put back if sshd refuses it, and changes that could cut you off — a new
+  port, turning off password or key logins, an allow-list — ask first.
 - **DNS/DHCP appliance mode** — an optional **dnsmasq** module (default-off)
   turns a node into a DNS/DHCP server: host overrides, CNAMEs, domain
   overrides/forwards, DHCP pools/static leases/options, external network-boot
@@ -226,8 +235,8 @@ picks one on **My Account → Appearance** (per browser); an admin sets the
 node default there. Drop your own into `themes/` next to `app.py` — no
 restart, the catalog rescans. See [THEMES.md](THEMES.md).
 
-Six of the themes on the same node, dark and light, in the desktop shell
-(screenshots from 4.1.2; click to enlarge):
+Every theme, dark and light, on the same node in the desktop shell
+(screenshots from 4.2.0; click to enlarge):
 
 | Theme | Dark | Light |
 |---|---|---|
@@ -235,18 +244,19 @@ Six of the themes on the same node, dark and light, in the desktop shell
 | **Phosphor** | <img src="docs/themes/phosphor-dark.png" alt="Phosphor, dark" width="420"> | <img src="docs/themes/phosphor-light.png" alt="Phosphor, light" width="420"> |
 | **Construct** | <img src="docs/themes/construct-dark.png" alt="Construct, dark" width="420"> | <img src="docs/themes/construct-light.png" alt="Construct, light" width="420"> |
 | **Pip-Boy** | <img src="docs/themes/pipboy-dark.png" alt="Pip-Boy, dark" width="420"> | <img src="docs/themes/pipboy-light.png" alt="Pip-Boy, light" width="420"> |
+| **Brushed Metal** | <img src="docs/themes/brushed-dark.png" alt="Brushed Metal, dark" width="420"> | <img src="docs/themes/brushed-light.png" alt="Brushed Metal, light" width="420"> |
+| **NeXTSTEP** | <img src="docs/themes/nextstep-dark.png" alt="NeXTSTEP, dark" width="420"> | <img src="docs/themes/nextstep-light.png" alt="NeXTSTEP, light" width="420"> |
 | **Amber Terminal** | <img src="docs/themes/amber-dark.png" alt="Amber Terminal, dark" width="420"> | <img src="docs/themes/amber-light.png" alt="Amber Terminal, light" width="420"> |
 | **Solarized Paper** | <img src="docs/themes/solarized-dark.png" alt="Solarized Paper, dark" width="420"> | <img src="docs/themes/solarized-light.png" alt="Solarized Paper, light" width="420"> |
+| **Amiga Workbench** | <img src="docs/themes/amiga-dark.png" alt="Amiga Workbench, dark" width="420"> | <img src="docs/themes/amiga-light.png" alt="Amiga Workbench, light" width="420"> |
 
 A theme restyles the whole desktop — windows, taskbar, launcher, widgets and
-every page inside a window — and can carry its own fonts and effects (the
-Pip-Boy's scanlines and bezel, Amber Terminal's double-ruled panels).
-
-**Brushed Metal**, **NeXTSTEP** and **Amiga Workbench** also ship. They were
-built for the earlier sidebar layout and wrap the page in their own title
-bars; in the desktop shell their colours and window styling apply, but that
-older chrome still shows on the desktop. They are being reworked for the
-shell and are not pictured here until then.
+every page inside a window — and can carry its own fonts and effects: the
+Pip-Boy's scanlines and bezel, Brushed Metal's traffic-light window buttons,
+NeXTSTEP's black title bars and Dock of tiles along the bottom, Amiga
+Workbench's striped drag bars and depth gadgets, Amber Terminal's
+double-ruled panels. Switching themes needs no reload and leaves nothing
+behind.
 
 ## Single sign-on (optional)
 
@@ -286,8 +296,9 @@ nexusdash/
   core/                 # auth/RBAC/tokens, audit, TLS, registry, aggregators
   modules/              # disks zfs lvm mdraid schedules replication maintenance
                         # iscsi nfs smb minidlna llama halogen radiance affinity
-                        # gpu firewall caddy dnsmasq docker docker_compose
-                        # docker_registry updates nut upsmon network logs
+                        # radiance_engine gpu firewall sshd terminal caddy dnsmasq
+                        # docker docker_compose docker_registry updates nut upsmon
+                        # network logs
   modules/containers/   # LXD/Incus: instances, images, networks, port-forward, console
 static/js/*.js          # per-category frontend, no build step
 ```
@@ -300,7 +311,7 @@ capabilities and the hard-disable enforcement from those.
 
 ```bash
 ./venv/bin/pip install -r requirements-dev.txt
-./venv/bin/python -m pytest tests/ -q     # 1116 tests, no root/hardware needed
+./venv/bin/python -m pytest tests/ -q     # 1203 tests, no root/hardware needed
 ```
 
 ## Lineage

@@ -2,7 +2,7 @@
   "id": "amber",
   "name": "Amber Terminal",
   "description": "A 3270 / VT220 operator console: amber on black, double-rule boxes, inverse-video selection, an F-key bar and the operator information area. Light mode is green-bar printer paper.",
-  "author": "Nexus Dashboard",
+  "author": "FlyDash",
   "version": "1.0",
   "modes": [
     "dark",

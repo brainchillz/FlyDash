@@ -19,7 +19,7 @@ def test_descriptors_registered_and_derived():
     assert ids == ['disks', 'zfs', 'lvm', 'mdraid', 'schedules', 'replication',
                    'maintenance', 'iscsi', 'nfs', 'smb', 'minidlna', 'llamacpp', 'halogen', 'radiance', 'affinity', 'radiance_engine', 'gpu',
                    'instances', 'images', 'ctnetworks', 'portforward', 'docker',
-                   'compose', 'firewall', 'terminal', 'caddy', 'dnsmasq', 'metrics',
+                   'compose', 'firewall', 'sshd', 'terminal', 'caddy', 'dnsmasq', 'metrics',
                    'updates', 'nut', 'upsmon']
     assert app.MODULE_IDS == set(ids)
     # The containers group registered with the right nav category (split

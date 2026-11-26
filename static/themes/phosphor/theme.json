@@ -2,7 +2,7 @@
   "id": "phosphor",
   "name": "Phosphor",
   "description": "Palette-only: the Nexus layout untouched, a softened phosphor green spent where the burnt orange is. Light mode is pale green-grey paper.",
-  "author": "Nexus Dashboard",
+  "author": "FlyDash",
   "version": "1.0",
   "modes": ["dark", "light"],
   "css": "theme.css"
