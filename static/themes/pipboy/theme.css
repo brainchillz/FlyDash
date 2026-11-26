@@ -23,6 +23,16 @@ html[data-theme="pipboy"] {
   --glow: rgba(61,255,124,.55); --scan: rgba(0,0,0,.32); --vignette: rgba(0,0,0,.6);
   --mono: 'Share Tech Mono', ui-monospace, Menlo, Consolas, monospace;
   --sans: var(--mono);
+  /* Desktop shell (see the block at the end of this file). */
+  --desk-glass: color-mix(in srgb, var(--bg) 93%, transparent);
+  --desk-glass-solid: color-mix(in srgb, var(--bg) 98%, transparent);
+  --desk-glass-border: var(--border);
+  --desk-taskbar: color-mix(in srgb, var(--bg) 95%, transparent);
+  --desk-icon-text: var(--text);
+  --desk-icon-shadow: none;
+  --desk-icon-hover: color-mix(in srgb, var(--bg) 60%, transparent);
+  --desk-icon-sel: color-mix(in srgb, var(--bg) 80%, transparent);
+  --desk-muted: color-mix(in srgb, var(--text) 72%, var(--bg));
 }
 html[data-theme="pipboy"][data-theme-variant="amber"] {
   --bg: #140d03; --sidebar-bg: #1a1105; --card-bg: #1a1105; --border: #6b4a0d; --border-soft: #3f2c08;
@@ -177,3 +187,28 @@ html[data-theme="pipboy"] .login-box::before { content: 'Nexus unified operating
 html[data-theme="pipboy"] .login-box h1 { font-weight: 400; font-size: 20px; letter-spacing: .14em; }
 html[data-theme="pipboy"] .login-box .subtitle::before { content: '> '; }
 html[data-theme="pipboy"] .sso-btn { text-transform: uppercase; letter-spacing: .08em; }
+
+/* ── Desktop shell: icons, widget, taskbar ──
+   The shell's default glass is a neutral grey meant for light text; on this
+   theme the phosphor text sat on it (and on the bare wallpaper) at almost no
+   contrast. Give the shell the screen's own colours instead. Everything is
+   derived from --bg / --text / --border, so the amber / blue / white variants
+   and the light "paper manual" mode follow without rules of their own. The
+   --desk-* tokens themselves live in the theme's first block (one token
+   block per mode is what tests/test_themes.py parses). */
+/* Icon labels: a solid plate, so they read over any wallpaper. */
+html[data-theme="pipboy"] .dicon { width: 108px; }   /* the mono face is wide: "Reverse Proxy" must fit */
+html[data-theme="pipboy"] .dicon span.lbl { background: var(--bg); border: 1px solid var(--border); padding: 2px 5px 1px; }
+html[data-theme="pipboy"] .dicon.sel span.lbl, html[data-theme="pipboy"] .dicon:hover span.lbl { border-color: var(--primary); }
+/* Widget: bright values, and labels a step down rather than the page's dim --text-muted. */
+html[data-theme="pipboy"] .widget { color: var(--text); }
+html[data-theme="pipboy"] .widget .wt, html[data-theme="pipboy"] .widget .wrow .k { color: var(--desk-muted); }
+html[data-theme="pipboy"] .widget .card-sub, html[data-theme="pipboy"] .widget .usage-size { color: var(--text); }
+html[data-theme="pipboy"] .widget .wrow.link:hover, html[data-theme="pipboy"] .widget .wrow.link:hover * { color: var(--on-primary); text-shadow: none; }
+html[data-theme="pipboy"] .widget .wrow.link:hover .usage-bar { border-color: var(--on-primary); }
+/* Taskbar: tray text a step down from the values; and --hover is the solid
+   phosphor colour on this theme, so anything it fills needs the inverse ink. */
+html[data-theme="pipboy"] .tray-item { color: var(--desk-muted); }
+html[data-theme="pipboy"] .tb:hover, html[data-theme="pipboy"] button.tray-item:hover,
+html[data-theme="pipboy"] button.tray-item:hover .host { color: var(--on-primary); text-shadow: none; }
+html[data-theme="pipboy"] .widget .wrow.link:hover .usage-bar-fill { background: var(--on-primary); box-shadow: none; }

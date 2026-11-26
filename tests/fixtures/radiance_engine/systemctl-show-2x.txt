@@ -1,0 +1,14 @@
+Id=radiance-flashnext.service
+Conflicts=vllm-qwen.service llama-server.service shutdown.target affinity-deepseek.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+FragmentPath=/etc/systemd/system/radiance-flashnext.service
+DropInPaths=
+UnitFileState=enabled
+ActiveEnterTimestamp=Tue 2026-11-24 07:38:44 UTC
+MainPID=266897
+NRestarts=0
+ExecStart={ path=/home/backupuser/radiance/run.sh ; argv[]=/home/backupuser/radiance/run.sh --config /radiance.yaml ; ignore_errors=no ; start_time=[Tue 2026-11-24 07:38:44 UTC] ; stop_time=[n/a] ; pid=266897 ; code=(null) ; status=0/0 }
+ExecStop={ path=/usr/bin/docker ; argv[]=/usr/bin/docker stop -t 30 radiance-tp4 ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+Environment=HOME=/home/backupuser GPUS=0,1,2,3 NAME=radiance-tp4 IMAGE=stilldeadcode/radiance:2.2.0

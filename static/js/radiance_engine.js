@@ -1,10 +1,10 @@
 // ─── Radiance Engine (StillDeadcode's standalone engine, systemd unit) ───────
 // Page + dashboard card for the `radiance_engine` module. Everything comes
 // from /api/radiance_engine: unit state via systemctl, the engine's flags
-// from ExecStart, /v1/models readiness, the engine's own /stats figures and
-// its boot receipt + recent requests read back from the container log.
-// Actions are systemctl verbs; there is no parameter editor (the settings
-// are argv on the unit).
+// from ExecStart (1.x) or its own boot CONFIGURATION report (2.x, where the
+// unit says only --config FILE), /v1/models readiness, the engine's own
+// /stats figures and its boot receipt + recent requests read back from the
+// container log. Actions are systemctl verbs; there is no parameter editor.
 
 function reNum(x, d) { return x == null ? '—' : Number(x).toFixed(d == null ? 1 : d); }
 function reInt(x) { return x == null ? '—' : Number(x).toLocaleString(); }
@@ -90,12 +90,21 @@ async function page_radiance_engine() {
   }
   html += '</div>';
 
-  // ── Launch settings (read-only: the flags on the unit's ExecStart)
+  // ── Launch settings (read-only: the flags on the unit's ExecStart, or — Radiance 2.x —
+  //    what the engine reported it took from its --config file)
   const named = st.named_args || [], other = st.other_args || {};
+  const cfgPath = st.config_host_path || st.config_file;
+  const settingsHelp = !st.config_file
+    ? `The engine's flags on <code>ExecStart</code> of <code>${escapeHtml(st.fragment || st.unit + '.service')}</code>, plus the launcher's environment. Read-only here — edit the unit and <code>daemon-reload</code> to change them.`
+    : `This engine reads its settings from a config file, <code>${escapeHtml(cfgPath)}</code>${st.config_host_path ? ` (mounted at <code>${escapeHtml(st.config_file)}</code>)` : ''}. `
+      + (st.settings_from === 'log' ? 'Shown as the engine reported them at its last start, with where each came from.'
+        : st.settings_from === 'server_info' ? 'The boot report has scrolled out of the log; these are the ones the engine still reports on <code>/server_info</code>.'
+        : st.running ? 'The engine has not reported them yet.' : 'They are listed once the engine is running.')
+      + ' Read-only here — edit the file and restart the unit to change them.';
   html += `<div class="card"><h3>Launch settings</h3>
-    <p class="help">The engine's flags on <code>ExecStart</code> of <code>${escapeHtml(st.fragment || st.unit + '.service')}</code>, plus the launcher's environment. Read-only here — edit the unit and <code>daemon-reload</code> to change them.</p>
+    <p class="help">${settingsHelp}</p>
     <table class="table"><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>
-    ${named.map(a => `<tr><td>${escapeHtml(a.label)} <code class="help">${escapeHtml(a.flag)}</code></td><td class="mono">${escapeHtml(a.value == null ? '—' : String(a.value))}</td></tr>`).join('')}
+    ${named.map(a => `<tr><td>${escapeHtml(a.label)} <code class="help">${escapeHtml(a.flag)}</code></td><td class="mono">${escapeHtml(a.value == null ? '—' : String(a.value))}${a.source && a.source !== 'server_info' ? ` <span class="help">${escapeHtml(a.source)}</span>` : ''}</td></tr>`).join('')}
     ${Object.keys(other).sort().map(k => `<tr><td><code>--${escapeHtml(k)}</code></td><td class="mono">${escapeHtml(String(other[k]))}</td></tr>`).join('')}
     ${Object.keys(st.env || {}).sort().map(k => `<tr><td>env <code>${escapeHtml(k)}</code></td><td class="mono">${escapeHtml(String(st.env[k]))}</td></tr>`).join('')}
     </tbody></table></div>`;

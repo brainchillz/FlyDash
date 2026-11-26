@@ -1,17 +1,30 @@
 # FlyDash
 
-**FlyDash is a desktop-style fork of Nexus Dashboard**: the same modular
-Flask backend, API contract, modules, plugins and themes, presented as a
-browser desktop — wallpaper, app launcher, taskbar and floating app windows
-(Storage, Sharing, SAN, Virtualization, Containers, AI Tools, Settings …)
-instead of a sidebar of pages. Everything below about Nexus Dashboard still
-applies to the backend.
+**FlyDash is the successor to [Nexus Dashboard](https://github.com/brainchillz/NexusDashboard-Modular)**:
+the same modular Flask backend, API contract, modules, plugins and themes,
+presented as a browser desktop — wallpaper, app launcher, taskbar and floating
+app windows (Storage, Sharing, SAN, Virtualization, Containers, AI Tools,
+Settings …) instead of a sidebar of pages.
 
-<img src="docs/flydash-desktop.png" alt="The FlyDash desktop: fly wallpaper, status widget, app icons, taskbar and the Settings window open on Appearance with the wallpaper picker" width="100%">
+Nexus Dashboard is no longer maintained; all development continues here.
+FlyDash began as a fork of Nexus Dashboard 3.12.0 and deliberately keeps its
+on-disk names (`/opt/nexus-dashboard`, the `nexus-dashboard` service and
+helpers), so an existing Nexus Dashboard node upgrades to FlyDash in place —
+see [Install](#install). Everything below about Nexus Dashboard still applies
+to the backend.
 
-*The desktop on a fresh install (4.0.0): the shipped wallpaper, the node
-status widget, app icons, the taskbar, and Settings open on Appearance, where
-the theme and wallpaper are chosen.*
+<img src="docs/flydash-desktop.png" alt="The FlyDash desktop: fly wallpaper, app icons, the node status widget, the taskbar, and two open windows — Storage on ZFS Pools and the Overview dashboard" width="100%">
+
+*The desktop (4.1.2): app icons, the node status widget, the taskbar, and two
+app windows — Storage and Overview — open over the shipped wallpaper.*
+
+## Screenshots
+
+| | |
+|---|---|
+| <img src="docs/flydash-launcher.png" alt="The app launcher open over the desktop, with search, the enabled apps and the apps not enabled on this node" width="100%"><br>**App launcher** — search apps and sections; apps a node does not use are listed as not enabled. | <img src="docs/flydash-storage.png" alt="The Storage app on ZFS Pools: ARC usage, two pools with their vdev members and scrub status, and the dataset table" width="100%"><br>**Storage** — ZFS pools, members, scrubs and datasets; LVM, MD RAID, snapshots and replication in the same window. |
+| <img src="docs/flydash-overview.png" alt="The Overview app: health line, service tiles, system resources and one card per filesystem" width="100%"><br>**Overview** — health, services, live resources and every filesystem on the node. | <img src="docs/flydash-appearance.png" alt="Settings on Appearance: theme and mode choice, the node default theme, and the wallpaper picker" width="100%"><br>**Appearance** — theme, dark/light mode, the node default and the wallpaper. |
+| <img src="docs/flydash-apps.png" alt="Settings on Apps: per-module toggles grouped by Storage, Sharing and AI Tools" width="100%"><br>**Apps** — per-node module toggles decide which apps a node shows. | <img src="docs/flydash-light.png" alt="The desktop in light mode with the Storage window open" width="100%"><br>**Light mode** — every theme has a dark and a light mode. |
 
 Nexus Dashboard is a single modular web dashboard for a whole home-lab fleet: **storage** (ZFS,
 LVM, MD RAID, disks), **sharing** (iSCSI, NFS, SMB, DLNA), **AI tools**
@@ -213,8 +226,8 @@ picks one on **My Account → Appearance** (per browser); an admin sets the
 node default there. Drop your own into `themes/` next to `app.py` — no
 restart, the catalog rescans. See [THEMES.md](THEMES.md).
 
-Every theme, dark and light, on the same node (screenshots from 3.11.0;
-click to enlarge):
+Six of the themes on the same node, dark and light, in the desktop shell
+(screenshots from 4.1.2; click to enlarge):
 
 | Theme | Dark | Light |
 |---|---|---|
@@ -222,17 +235,18 @@ click to enlarge):
 | **Phosphor** | <img src="docs/themes/phosphor-dark.png" alt="Phosphor, dark" width="420"> | <img src="docs/themes/phosphor-light.png" alt="Phosphor, light" width="420"> |
 | **Construct** | <img src="docs/themes/construct-dark.png" alt="Construct, dark" width="420"> | <img src="docs/themes/construct-light.png" alt="Construct, light" width="420"> |
 | **Pip-Boy** | <img src="docs/themes/pipboy-dark.png" alt="Pip-Boy, dark" width="420"> | <img src="docs/themes/pipboy-light.png" alt="Pip-Boy, light" width="420"> |
-| **Brushed Metal** | <img src="docs/themes/brushed-dark.png" alt="Brushed Metal, dark" width="420"> | <img src="docs/themes/brushed-light.png" alt="Brushed Metal, light" width="420"> |
-| **NeXTSTEP** | <img src="docs/themes/nextstep-dark.png" alt="NeXTSTEP, dark" width="420"> | <img src="docs/themes/nextstep-light.png" alt="NeXTSTEP, light" width="420"> |
 | **Amber Terminal** | <img src="docs/themes/amber-dark.png" alt="Amber Terminal, dark" width="420"> | <img src="docs/themes/amber-light.png" alt="Amber Terminal, light" width="420"> |
 | **Solarized Paper** | <img src="docs/themes/solarized-dark.png" alt="Solarized Paper, dark" width="420"> | <img src="docs/themes/solarized-light.png" alt="Solarized Paper, light" width="420"> |
-| **Amiga Workbench** | <img src="docs/themes/amiga-dark.png" alt="Amiga Workbench, dark" width="420"> | <img src="docs/themes/amiga-light.png" alt="Amiga Workbench, light" width="420"> |
 
-Themes change more than colours: the Pip-Boy adds its tab bar and bottom
-readout strip, Brushed Metal and Amiga wrap the app in a window with real
-title and status bars, NeXTSTEP builds a Dock from the node's own sidebar,
-Amber Terminal adds an F-key bar and operator information area — and each
-removes all of it again when you switch away, without a reload.
+A theme restyles the whole desktop — windows, taskbar, launcher, widgets and
+every page inside a window — and can carry its own fonts and effects (the
+Pip-Boy's scanlines and bezel, Amber Terminal's double-ruled panels).
+
+**Brushed Metal**, **NeXTSTEP** and **Amiga Workbench** also ship. They were
+built for the earlier sidebar layout and wrap the page in their own title
+bars; in the desktop shell their colours and window styling apply, but that
+older chrome still shows on the desktop. They are being reworked for the
+shell and are not pictured here until then.
 
 ## Single sign-on (optional)
 
@@ -286,7 +300,7 @@ capabilities and the hard-disable enforcement from those.
 
 ```bash
 ./venv/bin/pip install -r requirements-dev.txt
-./venv/bin/python -m pytest tests/ -q     # 1109 tests, no root/hardware needed
+./venv/bin/python -m pytest tests/ -q     # 1116 tests, no root/hardware needed
 ```
 
 ## Lineage

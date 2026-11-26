@@ -15,6 +15,16 @@ the foreground with the engine's flags on the ExecStart line and the
 launcher's GPUS / NAME / IMAGE as `Environment=`; `Conflicts=` on whatever
 else wants the cards.
 
+Radiance 2.x (4.1.1): the server takes only `--config FILE`, a YAML file
+the launcher mounts into the container, so ExecStart no longer carries the
+settings. The module does not read or parse that file. The engine prints a
+CONFIGURATION report at boot (every option not at its default, the value in
+force and where it came from; 1.x prints it too), and that is where the
+settings, the listen port and the rank count come from when the unit says
+`--config`. Once the report has scrolled out of the log tail, `/server_info`
+supplies the ones it carries. 2.x also logs `I server: listening on …` where
+1.x logged `I serving on …`.
+
 What the page shows, and where it comes from:
 
 - unit state via `systemctl show -p …`; the flags from ExecStart (read-only
@@ -61,8 +71,9 @@ SHOW_PROPS = ('Id,LoadState,ActiveState,SubState,UnitFileState,FragmentPath,Drop
               'NRestarts,ActiveEnterTimestamp,MainPID,Environment,ExecStart,ExecStop,Conflicts')
 UNIT_ACTIONS = ('start', 'stop', 'restart', 'enable', 'disable')
 
-# Flags worth naming on the page, from the ExecStart argv. Everything else
-# the engine was given is listed verbatim under "other arguments".
+# Flags worth naming on the page, from the ExecStart argv (1.x) or the engine's
+# own CONFIGURATION report (2.x, `--config`). Everything else the engine was
+# given is listed verbatim under "other arguments".
 NAMED_ARGS = (('--model', 'Model container'),
               ('--tp', 'Tensor-parallel ranks'),
               ('--tp-wire', 'All-reduce wire'),
@@ -94,7 +105,10 @@ RE_NGRAM = re.compile(r'^I placement: n-gram table \(([\d.]+) GiB\) (\w+)')
 RE_KV_POOL = re.compile(r'^I kv: the pool backs (\d+)% of the worst case \((\d+) sequences all at (\d+) tokens\), ([\d.]+) full-length sessions')
 RE_BUDGET = re.compile(r'^\s+(card total|static weights|experts|kv cache|elastic|vram_weights|vram_kv)\s+([\d.]+) GiB')
 RE_SETTLED = re.compile(r'^([IW])\[(\d+)\] card (\d+) settled at ([\d.]+) MiB free')
-RE_SERVING = re.compile(r'^I serving on (http://\S+)')
+RE_SERVING = re.compile(r'^I (?:serving on|server: listening on) (http://\S+)')    # 1.x | 2.x
+# One row of the boot CONFIGURATION report: `I   --flag   value   [where it came from]`.
+RE_CONFIG = re.compile(r'^I   (--[\w-]+)\s{2,}(.*?)\s{2,}\[([^\]]+)\]\s*$')
+CONFIG_NOT_SET = ('auto', 'default')     # report sources that mean nobody asked for the value
 RE_REQ = re.compile(r'^I req (\S+) done from (\S+) finish=(\S+) prompt=(\d+) \(cache (\d+)\) gen=(\d+)(?: reason=(\d+))?'
                     r' ttft=([\d.]+)s ([\d.]+) tok/s ([\d.]+)s')
 RE_ERROR = re.compile(r'^E(?:\[\d+\])? ')
@@ -125,7 +139,8 @@ def startup_summary(log_text, recent=RECENT_REQUESTS):
      budget:{card total, static weights, experts, kv cache, elastic,
      vram_weights, vram_kv} (GiB per card), settled:[{card, free_mib, warned}],
      headroom_warnings, listening, ready, errors, warnings, requests:[…],
-     requests_total, tokens_total, last_tps}"""
+     requests_total, tokens_total, last_tps,
+     config:[{flag, value, source}] (the CONFIGURATION report, in its order)}"""
     lines = (log_text or '').splitlines()
     start = 0
     for i, line in enumerate(lines):
@@ -135,8 +150,10 @@ def startup_summary(log_text, recent=RECENT_REQUESTS):
            'p2p': None, 'wire_lossy': False, 'drafter': None, 'draft_tokens': None,
            'ngram_gib': None, 'ngram_where': None, 'kv_backing_pct': None, 'kv_sessions': None,
            'budget': {}, 'settled': [], 'headroom_warnings': 0, 'listening': None, 'ready': False,
-           'errors': 0, 'warnings': 0, 'requests': [], 'requests_total': 0, 'tokens_total': 0, 'last_tps': None}
+           'errors': 0, 'warnings': 0, 'requests': [], 'requests_total': 0, 'tokens_total': 0, 'last_tps': None,
+           'config': []}
     budget_block = False
+    seen_flags = set()
     for raw in lines[start:]:
         line = raw.rstrip()
         if not line:
@@ -150,6 +167,12 @@ def startup_summary(log_text, recent=RECENT_REQUESTS):
             out['requests_total'] += 1
             out['tokens_total'] += req['gen']
             out['last_tps'] = req['tps']
+            continue
+        m = RE_CONFIG.match(line)
+        if m:
+            if m.group(1) not in seen_flags:
+                seen_flags.add(m.group(1))
+                out['config'].append({'flag': m.group(1), 'value': m.group(2), 'source': m.group(3)})
             continue
         m = RE_START_MARK.match(line)
         if m:
@@ -206,6 +229,45 @@ def startup_summary(log_text, recent=RECENT_REQUESTS):
             out['lines'].append(line)
     out['requests'] = out['requests'][-recent:]
     return out
+
+
+def config_settings(config):
+    """The CONFIGURATION report's rows somebody set (not `auto` / `default`)
+    → [{flag, value, source}], report order. Pure."""
+    return [c for c in (config or []) if c.get('source') not in CONFIG_NOT_SET]
+
+
+def parse_server_info(text):
+    """The settings `/server_info` carries, as report-shaped rows
+    [{flag, value, source: 'server_info'}] — the fallback once the boot
+    report has left the log tail. It has no listen port, KV dtype, headroom
+    or speculation depth. [] on anything that is not its JSON. Pure."""
+    try:
+        d = json.loads(text or '')
+    except ValueError:
+        return []
+    if not isinstance(d, dict) or not isinstance(d.get('engine'), dict):
+        return []
+    eng = d['engine']
+    srv = d.get('server') if isinstance(d.get('server'), dict) else {}
+    req = d.get('request_defaults') if isinstance(d.get('request_defaults'), dict) else {}
+
+    def asked(v):
+        return v.get('asked') if isinstance(v, dict) else v
+
+    emap = req.get('reasoning_effort_map')
+    rows = (('--model', eng.get('container')),
+            ('--tp', eng.get('tensor_parallel')),
+            ('--tp-wire', eng.get('tp_wire')),
+            ('--placement', eng.get('placement')),
+            ('--ngram-placement', asked(eng.get('ngram_placement'))),
+            ('--max-model-len', srv.get('max_model_len')),
+            ('--max-num-seqs', srv.get('max_num_seqs')),
+            ('--max-num-batched-tokens', eng.get('max_num_batched_tokens')),
+            ('--reasoning-effort-map', ','.join('%s=%s' % kv for kv in sorted(emap.items()))
+             if isinstance(emap, dict) and emap else None),
+            ('--served-model-name', srv.get('model')))
+    return [{'flag': f, 'value': str(v), 'source': 'server_info'} for f, v in rows if v not in (None, '')]
 
 
 def _ns_ms(ns):
@@ -290,6 +352,22 @@ def _container_logs(name, tail):
     return _dk_demux_logs(raw).decode('utf-8', 'replace')
 
 
+def _config_host_path(name, dest):
+    """Where the launcher took the `--config` file from on the host: the
+    source of the container mount at `dest`. None when it cannot be told."""
+    if not dest or not RE_DK_NAME.match(name or ''):
+        return None
+    try:
+        status, raw = docker_raw('GET', '/containers/%s/json' % name, timeout=10)
+        mounts = json.loads(raw).get('Mounts') if status < 400 else None
+    except (DockerError, ValueError, AttributeError):
+        return None
+    for m in mounts or []:
+        if isinstance(m, dict) and m.get('Destination') == dest:
+            return m.get('Source') or None
+    return None
+
+
 def _base_status(full=False):
     unit = _unit()
     st = {'unit': unit, 'installed': False, 'active': 'unknown', 'sub': '', 'enabled': None,
@@ -309,13 +387,23 @@ def _base_status(full=False):
     st['env'] = {k: v for k, v in env.items() if k not in ('HOME', 'PATH')}
     st['argv'] = parse_exec_argv(s.get('ExecStart', ''))
     st['args'] = parse_args(st['argv'])
+    # Radiance 2.x: the unit says only `--config FILE`; the settings are what the engine reports.
+    st['config_file'] = st['args'].get('config') if 'model' not in st['args'] else None
+    st['settings'], st['settings_from'] = [], None
     st['port'] = int(_num(st['args'].get('port')) or DEFAULT_PORT)
     st['tp'] = _int(st['args'].get('tp'))
     st['container'] = env.get('NAME') or parse_exec_stop_name(s.get('ExecStop', '')) or DEFAULT_NAME
-    st['url'] = ENGINE_URL or 'http://127.0.0.1:%d' % st['port']
     st['gpus'] = env.get('GPUS')
     st['image'] = env.get('IMAGE')
     st['conflict_units'] = parse_conflicts(s.get('Conflicts', ''))
+    if st['running']:
+        st['startup'] = startup_summary(_container_logs(st['container'], LOG_TAIL))
+        if st['config_file']:
+            st['settings'] = config_settings(st['startup']['config'])
+            if st['settings']:
+                st['settings_from'] = 'log'
+                _apply_settings(st)
+    st['url'] = ENGINE_URL or 'http://127.0.0.1:%d' % st['port']
     if st['running']:
         text, e = _http_get(st['url'], '/v1/models', 3)
         st['models'] = parse_models(text) if text else []
@@ -324,14 +412,36 @@ def _base_status(full=False):
         if st['ready']:
             text, _e = _http_get(st['url'], '/stats', 3)
             st['stats'] = parse_stats(text) if text else {}
-        st['startup'] = startup_summary(_container_logs(st['container'], LOG_TAIL))
+            if st['config_file'] and not st['settings']:
+                # The boot report has left the log tail: ask the engine for what it still tells.
+                text, _e = _http_get(st['url'], '/server_info', 3)
+                st['settings'] = parse_server_info(text) if text else []
+                if st['settings']:
+                    st['settings_from'] = 'server_info'
+                    _apply_settings(st)
     if full:
         st['conflicts'] = _conflict_states(st['conflict_units'])
-        st['named_args'] = [{'flag': f, 'label': lbl, 'value': st['args'].get(f[2:])}
-                            for f, lbl in NAMED_ARGS if f[2:] in st['args']]
-        named = {f[2:] for f, _l in NAMED_ARGS}
-        st['other_args'] = {k: v for k, v in st['args'].items() if k not in named}
+        named = {f: lbl for f, lbl in NAMED_ARGS}
+        if st['config_file']:
+            st['named_args'] = [{'flag': c['flag'], 'label': named[c['flag']], 'value': c['value'],
+                                 'source': c['source']} for c in st['settings'] if c['flag'] in named]
+            st['other_args'] = {k: v for k, v in st['args'].items() if k != 'config'}
+            st['other_args'].update({c['flag'][2:]: c['value'] for c in st['settings'] if c['flag'] not in named})
+            st['config_host_path'] = _config_host_path(st['container'], st['config_file']) if st['running'] else None
+        else:
+            st['named_args'] = [{'flag': f, 'label': lbl, 'value': st['args'].get(f[2:])}
+                                for f, lbl in NAMED_ARGS if f[2:] in st['args']]
+            st['other_args'] = {k: v for k, v in st['args'].items() if '--' + k not in named}
     return st
+
+
+def _apply_settings(st):
+    """Port and rank count from the engine's reported settings (2.x)."""
+    by = {c['flag']: c['value'] for c in st['settings']}
+    port = _int(by.get('--port'))
+    if port and 0 < port < 65536:
+        st['port'] = port
+    st['tp'] = _int(by.get('--tp')) or st['tp']
 
 
 # ─── Routes ───────────────────────────────────────────────────────────
