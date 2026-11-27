@@ -492,7 +492,7 @@ function deskRenderTaskbar() {
   const n = alerts.length + ((upd.available || 0) > 0 ? 1 : 0);
   const host = (stripInfo.host || location.hostname || '').split('.')[0];
   bar.innerHTML = `
-    <button class="tb launch${DESK.launcher ? ' on' : ''}" aria-label="App launcher" title="Apps" onclick="deskToggleLauncher(event)">${icon('grid')}</button>
+    <button class="tb launch${DESK.launcher ? ' on' : ''}" aria-label="App launcher" title="Apps" onclick="deskToggleLauncher(event)">${icon('fly')}</button>
     <span class="tb-sep"></span>
     ${apps.map(a => {
       const w = DESK.wins[a.id];
